@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import sys
 import torch
@@ -9,6 +10,10 @@ from evaluate import run_full, run_skip, run_entropy, run_voc
 from train import train_voc, train_router
 from models import Router, apply_voc_skip
 from data import load_dataset_part
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load global config
 try:
@@ -24,19 +29,23 @@ except json.JSONDecodeError:
 
 def run_voc_train():
     """Train VoC model and Router for layer skipping."""
-    print("Training VoC model...")
+    if os.path.exists('voc_model.pth') and os.path.exists('router.pth'):
+        logger.info("Models already exist. Skipping training. Use --force to retrain.")
+        return
+
+    logger.info("Training VoC model...")
     try:
         voc_model = train_voc()
     except Exception as e:
-        print(f"Error training VoC model: {e}")
+        logger.error(f"Error training VoC model: {e}")
         return
 
-    print("Collecting data for Router training...")
+    logger.info("Collecting data for Router training...")
     try:
         model, tokenizer = load_model()
         dataset = load_dataset_part()
     except Exception as e:
-        print(f"Error loading model or dataset: {e}")
+        logger.error(f"Error loading model or dataset: {e}")
         return
 
     router = Router().cuda().float()
@@ -59,46 +68,46 @@ def run_voc_train():
             _ = model(input_ids)
 
     records = voc_config["records"]
-    print(f"Collected {len(records)} records for training.")
+    logger.info(f"Collected {len(records)} records for training.")
 
     if not records:
-        print("No records collected. Skipping Router training.")
+        logger.warning("No records collected. Skipping Router training.")
         return
 
-    print("Training Router...")
+    logger.info("Training Router...")
     try:
         router = train_router(router, records)
     except Exception as e:
-        print(f"Error training Router: {e}")
+        logger.error(f"Error training Router: {e}")
         return
 
     # Save trained models
     try:
         torch.save(voc_model.state_dict(), 'voc_model.pth')
         torch.save(router.state_dict(), 'router.pth')
-        print("Models saved: voc_model.pth, router.pth")
+        logger.info("Models saved: voc_model.pth, router.pth")
     except Exception as e:
-        print(f"Error saving models: {e}")
+        logger.error(f"Error saving models: {e}")
 
 
 def run_voc_eval():
     """Evaluate VoC skipping with different thresholds."""
     if not os.path.exists('router.pth'):
-        print("Error: router.pth not found. Run voc_train first.")
+        logger.error("router.pth not found. Run voc_train first.")
         return
 
     try:
         router = Router().cuda().float()
         router.load_state_dict(torch.load('router.pth'))
     except Exception as e:
-        print(f"Error loading router: {e}")
+        logger.error(f"Error loading router: {e}")
         return
 
     for threshold in config['voc_thresholds']:
         try:
             run_voc(threshold, router)
         except Exception as e:
-            print(f"Error evaluating with threshold {threshold}: {e}")
+            logger.error(f"Error evaluating with threshold {threshold}: {e}")
 
 
 def main():
@@ -136,9 +145,9 @@ Examples:
         if args.mode == 'entropy':
             pass  # Already handled
     except KeyError:
-        print(f"Unknown mode: {args.mode}")
+        logger.error(f"Unknown mode: {args.mode}")
     except Exception as e:
-        print(f"Error running mode {args.mode}: {e}")
+        logger.error(f"Error running mode {args.mode}: {e}")
 
 
 if __name__ == "__main__":

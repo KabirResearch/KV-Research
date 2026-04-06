@@ -4,9 +4,12 @@ from models import VoCModel
 from utils import load_model
 from data import load_dataset_part
 import json
+import wandb
 
 with open('config.json') as f:
     config = json.load(f)
+
+wandb.init(project="layer-skipping", config=config)
 
 def train_voc():
     model, tokenizer = load_model()
@@ -72,7 +75,9 @@ def train_voc():
             torch.nn.utils.clip_grad_norm_(voc_model.parameters(), config['clip_grad_norm'])
             optimizer.step()
             total_loss += loss.item()
-        print(f"epoch {epoch} loss {total_loss:.4f}")
+        avg_loss = total_loss / len(dataloader)
+        wandb.log({"epoch": epoch, "loss": avg_loss})
+        print(f"epoch {epoch} loss {avg_loss:.4f}")
 
     return voc_model
 
