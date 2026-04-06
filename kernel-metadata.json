@@ -1,0 +1,13 @@
+{
+  "id": "kabir01010/notebookf4c27d156d",
+  "title": "notebookf4c27d156d",
+  "code_file": "main.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}
