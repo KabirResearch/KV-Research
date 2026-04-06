@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import sys
 import torch
 
 from utils import load_model
@@ -9,18 +11,34 @@ from models import Router, apply_voc_skip
 from data import load_dataset_part
 
 # Load global config
-with open('config.json') as f:
-    config = json.load(f)
+try:
+    with open('config.json') as f:
+        config = json.load(f)
+except FileNotFoundError:
+    print("Error: config.json not found.")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print("Error: Invalid config.json.")
+    sys.exit(1)
 
 
 def run_voc_train():
     """Train VoC model and Router for layer skipping."""
     print("Training VoC model...")
-    voc_model = train_voc()
+    try:
+        voc_model = train_voc()
+    except Exception as e:
+        print(f"Error training VoC model: {e}")
+        return
 
     print("Collecting data for Router training...")
-    model, tokenizer = load_model()
-    dataset = load_dataset_part()
+    try:
+        model, tokenizer = load_model()
+        dataset = load_dataset_part()
+    except Exception as e:
+        print(f"Error loading model or dataset: {e}")
+        return
+
     router = Router().cuda().float()
 
     voc_config = {
@@ -43,46 +61,84 @@ def run_voc_train():
     records = voc_config["records"]
     print(f"Collected {len(records)} records for training.")
 
-    print("Training Router...")
-    router = train_router(router, records)
+    if not records:
+        print("No records collected. Skipping Router training.")
+        return
 
-    # Save trained router
-    torch.save(router.state_dict(), 'router.pth')
-    print("Router saved to router.pth")
+    print("Training Router...")
+    try:
+        router = train_router(router, records)
+    except Exception as e:
+        print(f"Error training Router: {e}")
+        return
+
+    # Save trained models
+    try:
+        torch.save(voc_model.state_dict(), 'voc_model.pth')
+        torch.save(router.state_dict(), 'router.pth')
+        print("Models saved: voc_model.pth, router.pth")
+    except Exception as e:
+        print(f"Error saving models: {e}")
 
 
 def run_voc_eval():
     """Evaluate VoC skipping with different thresholds."""
-    router = Router().cuda().float()
-    router.load_state_dict(torch.load('router.pth'))
+    if not os.path.exists('router.pth'):
+        print("Error: router.pth not found. Run voc_train first.")
+        return
+
+    try:
+        router = Router().cuda().float()
+        router.load_state_dict(torch.load('router.pth'))
+    except Exception as e:
+        print(f"Error loading router: {e}")
+        return
 
     for threshold in config['voc_thresholds']:
-        run_voc(threshold, router)
+        try:
+            run_voc(threshold, router)
+        except Exception as e:
+            print(f"Error evaluating with threshold {threshold}: {e}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run layer skipping experiments.")
+    parser = argparse.ArgumentParser(
+        description="Run layer skipping experiments for GPT-NeoX models.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py --mode full          # Evaluate full model
+  python main.py --mode skip_25       # Evaluate 25% static skip
+  python main.py --mode entropy       # Evaluate entropy-based skipping
+  python main.py --mode voc_train     # Train VoC and Router models
+  python main.py --mode voc_eval      # Evaluate VoC skipping
+        """
+    )
     parser.add_argument(
         '--mode',
         choices=['full', 'skip_25', 'skip_50', 'entropy', 'voc_train', 'voc_eval'],
         default='full',
-        help="Execution mode"
+        help="Execution mode (see examples above)"
     )
     args = parser.parse_args()
 
-    if args.mode == 'full':
-        run_full()
-    elif args.mode == 'skip_25':
-        run_skip(0.25)
-    elif args.mode == 'skip_50':
-        run_skip(0.5)
-    elif args.mode == 'entropy':
-        for threshold in config['entropy_thresholds']:
-            run_entropy(threshold)
-    elif args.mode == 'voc_train':
-        run_voc_train()
-    elif args.mode == 'voc_eval':
-        run_voc_eval()
+    mode_functions = {
+        'full': run_full,
+        'skip_25': lambda: run_skip(0.25),
+        'skip_50': lambda: run_skip(0.5),
+        'entropy': lambda: [run_entropy(t) for t in config['entropy_thresholds']],
+        'voc_train': run_voc_train,
+        'voc_eval': run_voc_eval
+    }
+
+    try:
+        result = mode_functions[args.mode]()
+        if args.mode == 'entropy':
+            pass  # Already handled
+    except KeyError:
+        print(f"Unknown mode: {args.mode}")
+    except Exception as e:
+        print(f"Error running mode {args.mode}: {e}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,58 @@
+name: Push to Kaggle and Notify
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'config.json'
+      - 'data.py'
+      - 'utils.py'
+      - 'models.py'
+      - 'train.py'
+      - 'evaluate.py'
+      - 'main.py'
+      - 'kernel-metadata.json'
+
+jobs:
+  push-to-kaggle:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Kaggle CLI
+      run: |
+        pip install kaggle
+        mkdir -p ~/.kaggle
+        echo "${{ secrets.KAGGLE_API_KEY }}" > ~/.kaggle/kaggle.json
+        chmod 600 ~/.kaggle/kaggle.json
+
+    - name: Push kernel to Kaggle
+      run: |
+        cd ${{ github.workspace }}
+        kaggle kernels push
+
+    - name: Send notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        text: "Kernel pushed to Kaggle. Please run manually: https://www.kaggle.com/code/kabir01010/notebookf4c27d156d"
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: success()
+
+    - name: Send failure notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        text: "Failed to push kernel to Kaggle."
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: failure()
