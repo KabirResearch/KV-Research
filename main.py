@@ -1,35 +1,24 @@
-import argparse
-import json
-import logging
-import os
-import sys
-import torch
 
-from utils import load_model
-from evaluate import run_full, run_skip, run_entropy, run_voc
+import argparse
+import os
+import time
+from utils.model import load_model
+from utils.metrics import compute_loss
+from utils.config import config
+from utils.logging import setup_logging
+from evaluate import run_full, run_skip, run_entropy, run_voc, calibrate_voc_thresholds
 from train import train_voc, train_router
-from models import Router, apply_voc_skip
+from models import Router, apply_voc_skip, apply_token_level_voc_skip
 from data import load_dataset_part
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Load global config
-try:
-    with open('config.json') as f:
-        config = json.load(f)
-except FileNotFoundError:
-    print("Error: config.json not found.")
-    sys.exit(1)
-except json.JSONDecodeError:
-    print("Error: Invalid config.json.")
-    sys.exit(1)
+logger = setup_logging()
 
 
-def run_voc_train():
-    """Train VoC model and Router for layer skipping."""
-    if os.path.exists('voc_model.pth') and os.path.exists('router.pth'):
+def _run_voc_train_common(per_token: bool, save_name: str):
+    """Shared implementation for both regular and token-level VoC training."""
+    model_path = f'{save_name}.pth'
+    if os.path.exists('voc_model.pth') and os.path.exists(model_path):
         logger.info("Models already exist. Skipping training. Use --force to retrain.")
         return
 
@@ -40,7 +29,7 @@ def run_voc_train():
         logger.error(f"Error training VoC model: {e}")
         return
 
-    logger.info("Collecting data for Router training...")
+    logger.info(f"Collecting data for {save_name} training...")
     try:
         model, tokenizer = load_model()
         dataset = load_dataset_part()
@@ -48,7 +37,8 @@ def run_voc_train():
         logger.error(f"Error loading model or dataset: {e}")
         return
 
-    router = Router().cuda().float()
+    num_layers = len(model.gpt_neox.layers)
+    router = Router(num_layers, per_token=per_token).cuda().float()
 
     voc_config = {
         "threshold": 0.0,
@@ -59,7 +49,10 @@ def run_voc_train():
         "num_layers": len(model.gpt_neox.layers)
     }
 
-    apply_voc_skip(model, voc_config, router)
+    if per_token:
+        apply_token_level_voc_skip(model, voc_config, router)
+    else:
+        apply_voc_skip(model, voc_config, router)
 
     for batch in dataset:
         input_ids = batch["input_ids"].unsqueeze(0).cuda()
@@ -74,7 +67,7 @@ def run_voc_train():
         logger.warning("No records collected. Skipping Router training.")
         return
 
-    logger.info("Training Router...")
+    logger.info(f"Training {save_name}...")
     try:
         router = train_router(router, records)
     except Exception as e:
@@ -84,10 +77,20 @@ def run_voc_train():
     # Save trained models
     try:
         torch.save(voc_model.state_dict(), 'voc_model.pth')
-        torch.save(router.state_dict(), 'router.pth')
-        logger.info("Models saved: voc_model.pth, router.pth")
+        torch.save(router.state_dict(), model_path)
+        logger.info(f"Models saved: voc_model.pth, {model_path}")
     except Exception as e:
         logger.error(f"Error saving models: {e}")
+
+
+def run_voc_train():
+    """Train VoC model and Router for layer skipping."""
+    _run_voc_train_common(per_token=False, save_name='router')
+
+
+def run_voc_token_train():
+    """Train VoC model and Router for token-level skipping."""
+    _run_voc_train_common(per_token=True, save_name='router_token')
 
 
 def run_voc_eval():
@@ -97,7 +100,8 @@ def run_voc_eval():
         return
 
     try:
-        router = Router().cuda().float()
+        num_layers = config.get('num_layers', 16)
+        router = Router(num_layers).cuda().float()
         router.load_state_dict(torch.load('router.pth'))
     except Exception as e:
         logger.error(f"Error loading router: {e}")
@@ -109,23 +113,98 @@ def run_voc_eval():
         except Exception as e:
             logger.error(f"Error evaluating with threshold {threshold}: {e}")
 
+def run_voc_token_eval():
+    """Evaluate token-level VoC skipping."""
+    if not os.path.exists('router_token.pth'):
+        logger.error("router_token.pth not found. Run voc_token_train first.")
+        return
+
+    try:
+        num_layers = config.get('num_layers', 16)
+        router = Router(num_layers, per_token=True).cuda().float()
+        router.load_state_dict(torch.load('router_token.pth'))
+    except Exception as e:
+        logger.error(f"Error loading router: {e}")
+        return
+
+    for threshold in config['voc_thresholds']:
+        try:
+            model, tokenizer = load_model()
+            dataset = load_dataset_part()
+            voc_config = {
+                "threshold": threshold,
+                "skipped": 0,
+                "prev_hidden": None,
+                "collect_data": False,
+                "records": [],
+                "num_layers": len(model.gpt_neox.layers)
+            }
+            apply_token_level_voc_skip(model, voc_config, router)
+            total_loss, total_skips, count = 0, 0, 0
+            start = time.time()
+            for batch in dataset:
+                input_ids = batch["input_ids"].unsqueeze(0).cuda()
+                with torch.no_grad():
+                    voc_config["skipped"] = 0
+                    voc_config["prev_hidden"] = None
+                    outputs = model(input_ids)
+                    logits = outputs.logits
+                loss = compute_loss(logits, input_ids, tokenizer)
+                total_loss += loss.item()
+                total_skips += voc_config["skipped"]
+                count += 1
+            elapsed = time.time() - start
+            loss = total_loss / count
+            avg_skips = total_skips / count / (batch["input_ids"].shape[1] * count)  # percent tokens skipped
+            logger.info(f"Token VoC t={threshold}: loss={loss:.4f}, time={elapsed:.2f}s, %tokens skipped={avg_skips:.2f}")
+            # Cleanup GPU memory
+            del model, tokenizer, dataset, voc_config
+            torch.cuda.empty_cache()
+        except Exception as e:
+            logger.error(f"Error evaluating with threshold {threshold}: {e}")
+
+def run_voc_eval_calibrated():
+    """Evaluate VoC skipping with calibrated threshold."""
+    if not os.path.exists('router.pth'):
+        logger.error("router.pth not found. Run voc_train first.")
+        return
+
+    try:
+        # Assume num_layers from config or default
+        num_layers = config.get('num_layers', 16)  # pythia-1b has 16 layers
+        router = Router(num_layers).cuda().float()
+        router.load_state_dict(torch.load('router.pth'))
+    except Exception as e:
+        logger.error(f"Error loading router: {e}")
+        return
+
+    try:
+        val_dataset = load_dataset_part(split=config.get('val_dataset_split', 'validation[:1%]'))
+        best_threshold = calibrate_voc_thresholds(router, val_dataset)
+        run_voc(best_threshold, router)
+    except Exception as e:
+        logger.error(f"Error in calibrated evaluation: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser(
         description="Run layer skipping experiments for GPT-NeoX models.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python main.py --mode full          # Evaluate full model
-  python main.py --mode skip_25       # Evaluate 25% static skip
-  python main.py --mode entropy       # Evaluate entropy-based skipping
-  python main.py --mode voc_train     # Train VoC and Router models
-  python main.py --mode voc_eval      # Evaluate VoC skipping
-        """
+ Examples:
+   python main.py --mode full          # Evaluate full model
+   python main.py --mode skip_25       # Evaluate 25% static skip
+   python main.py --mode entropy       # Evaluate entropy-based skipping
+   python main.py --mode voc_train     # Train VoC and Router models
+   python main.py --mode voc_eval      # Evaluate VoC skipping
+   python main.py --mode voc_eval_calibrated  # Evaluate VoC with calibrated threshold
+   python main.py --mode voc_token_train     # Train token-level VoC
+   python main.py --mode voc_token_eval      # Evaluate token-level VoC
+         """
     )
     parser.add_argument(
         '--mode',
-        choices=['full', 'skip_25', 'skip_50', 'entropy', 'voc_train', 'voc_eval'],
+        choices=['full', 'skip_25', 'skip_50', 'entropy', 'voc_train', 'voc_eval', 'voc_eval_calibrated', 'voc_token_train', 'voc_token_eval'],
         default='full',
         help="Execution mode (see examples above)"
     )
@@ -137,7 +216,10 @@ Examples:
         'skip_50': lambda: run_skip(0.5),
         'entropy': lambda: [run_entropy(t) for t in config['entropy_thresholds']],
         'voc_train': run_voc_train,
-        'voc_eval': run_voc_eval
+        'voc_eval': run_voc_eval,
+        'voc_eval_calibrated': run_voc_eval_calibrated,
+        'voc_token_train': run_voc_token_train,
+        'voc_token_eval': run_voc_token_eval
     }
 
     try:

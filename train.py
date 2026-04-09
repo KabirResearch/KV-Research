@@ -1,19 +1,18 @@
+import logging
 import torch
 import torch.nn as nn
 from models import VoCModel
-from utils import load_model
+from utils import load_model, config, device
 from data import load_dataset_part
-import json
 import wandb
 
-with open('config.json') as f:
-    config = json.load(f)
-
-wandb.init(project="layer-skipping", config=config)
+logger = logging.getLogger(__name__)
 
 def train_voc():
+    logger.info("Starting VoC model training")
     model, tokenizer = load_model()
     dataset = load_dataset_part()
+    logger.info(f"Collecting features from {len(dataset)} samples")
     features, targets = [], []
 
     def hook_fn(module, input, output):
@@ -31,20 +30,23 @@ def train_voc():
         targets.append(delta.cpu())
 
     hooks = []
-    for layer in model.gpt_neox.layers:
-        layer.layer_id = id(layer)  # or something, but in notebook it's i
+    for layer_idx, layer in enumerate(model.gpt_neox.layers):
+        layer.layer_id = layer_idx
         hooks.append(layer.register_forward_hook(hook_fn))
 
     for i, batch in enumerate(dataset):
         if i > config['voc_collect_samples']:
             break
-        input_ids = batch["input_ids"].unsqueeze(0).cuda()
+        if i % 100 == 0:
+            logger.info(f"Collecting features: {i}/{config['voc_collect_samples']}")
+        input_ids = batch["input_ids"].unsqueeze(0).to(device)
         with torch.no_grad():
             _ = model(input_ids)
 
     for h in hooks:
         h.remove()
 
+    logger.info(f"Collected {len(features)} feature vectors")
     X = torch.cat(features)
     Y = torch.cat(targets)
     mask = torch.isfinite(X).all(dim=1) & torch.isfinite(Y)
@@ -57,15 +59,15 @@ def train_voc():
     dataset_voc = torch.utils.data.TensorDataset(X, Y)
     dataloader = torch.utils.data.DataLoader(dataset_voc, batch_size=config['batch_size'], shuffle=True)
 
-    voc_model = VoCModel().cuda().float()
+    voc_model = VoCModel().to(device).float()
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(voc_model.parameters(), lr=config['learning_rate'])
 
     for epoch in range(config['epochs']):
         total_loss = 0
         for x, y in dataloader:
-            x = x.float().cuda()
-            y = y.float().cuda().unsqueeze(1)
+            x = x.float().to(device)
+            y = y.float().to(device).unsqueeze(1)
             pred = voc_model(x)
             loss = criterion(pred, y)
             if torch.isnan(loss):
@@ -77,20 +79,42 @@ def train_voc():
             total_loss += loss.item()
         avg_loss = total_loss / len(dataloader)
         wandb.log({"epoch": epoch, "loss": avg_loss})
-        print(f"epoch {epoch} loss {avg_loss:.4f}")
+        logger.info(f"epoch {epoch} loss {avg_loss:.4f}")
 
     return voc_model
 
 def train_router(router, records):
     router.train()
     opt = torch.optim.Adam(router.parameters(), lr=config['learning_rate'])
+    best_loss = float('inf')
+    patience = 5
+    patience_counter = 0
     for epoch in range(config['epochs']):
+        total_loss = 0
+        count = 0
         for r in records:
-            x = r["feat"].cuda()
-            y = torch.tensor([r["label"]]).cuda()
-            pred = router(x).squeeze()
-            loss = (pred - y) ** 2
+            x = r["feat"].to(device)
+            y = torch.tensor([r["label"]]).to(device)
+            if router.per_token:
+                pred = router(x).squeeze()
+                y = y.expand_as(pred)
+                loss = ((pred - y) ** 2).mean()
+            else:
+                pred = router(x).squeeze()
+                loss = (pred - y) ** 2
+            total_loss += loss.item()
+            count += 1
             opt.zero_grad()
             loss.backward()
             opt.step()
+        avg_loss = total_loss / count
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+        if patience_counter >= patience:
+            print(f"Early stopping at epoch {epoch}")
+            break
+        print(f"Router epoch {epoch}: loss={avg_loss:.4f}")
     return router

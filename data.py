@@ -1,13 +1,17 @@
-import json
+import logging
 from datasets import load_dataset
 from transformers import AutoTokenizer
+from utils import config
 
-with open('config.json') as f:
-    config = json.load(f)
+logger = logging.getLogger(__name__)
 
-def load_dataset_part():
-    dataset = load_dataset(config['dataset_name'], config['dataset_config'], split=config['dataset_split'])
+def load_dataset_part(split=None):
+    split = split or config['dataset_split']
+    logger.info(f"Loading dataset {config['dataset_name']} split {split}")
+    dataset = load_dataset(config['dataset_name'], config['dataset_config'], split=split)
+    logger.info(f"Loaded {len(dataset)} raw samples")
     dataset = dataset.filter(lambda x: len(x["text"].strip()) > 0)
+    logger.info(f"Filtered to {len(dataset)} valid samples")
     tokenizer = AutoTokenizer.from_pretrained(config['model_name'])
     def tokenize(example):
         return tokenizer(example["text"], truncation=True, padding="max_length", max_length=config['max_length'])
