@@ -66,7 +66,7 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           # Kaggle API v1 — run the kernel
-          KERNEL_SLUG="${KAGGLE_USERNAME}/notebookf4c27d156d"
+          KERNEL_SLUG="${KAGGLE_USERNAME}/layersskippingscript"
           curl -s -X POST \
             -H "Content-Type: application/json" \
             -u "${KAGGLE_USERNAME}:${KAGGLE_KEY}" \
@@ -81,7 +81,7 @@ jobs:
           text: |
             ✅ *SoftLayer* pushed to Kaggle.
             Commit: `${{ github.sha }}`
-            Run: https://www.kaggle.com/code/${{ secrets.KAGGLE_USERNAME }}/notebookf4c27d156d
+            Run: https://www.kaggle.com/code/${{ secrets.KAGGLE_USERNAME }}/layerskippingscript
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
