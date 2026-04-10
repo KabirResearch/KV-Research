@@ -15,6 +15,7 @@ Paper: Token Merging (ToMe) — Bolya et al. 2022
        https://arxiv.org/abs/2210.09461
 """
 
+import torch
 import torch.nn as nn
 
 
