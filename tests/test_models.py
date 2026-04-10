@@ -18,7 +18,7 @@ def test_v2_skip():
     if isinstance(output, tuple):
         output = output[0]
     assert output.shape[0] == 1
-    assert output.shape[1] == 16 
+    assert output.shape[1] == 16
 
 
 def test_v3_entropy_skip():
