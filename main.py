@@ -174,7 +174,8 @@ def main():
         log_event("baselines_results", {"results": results})
 
     elif args.mode == "zero_shot":
-        result = run_zero_shot(model_name=config.get("model_name", "EleutherAI/pythia-1b"))
+        model, tokenizer = load_model()
+        result = run_zero_shot(model, tokenizer, device=str(device))
         print_zero_shot_table(result)
         log_event("zero_shot_result", result)
 
