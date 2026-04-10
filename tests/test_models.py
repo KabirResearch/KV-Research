@@ -1,6 +1,7 @@
 import torch
 import pytest
-from utils import load_model, compute_loss
+from utils.model import load_model
+from utils.metrics import compute_loss
 from models import apply_skip, apply_entropy_skip, apply_voc_skip, Router
 
 def make_dummy_input(tokenizer, seq_len=16):

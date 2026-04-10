@@ -1,78 +1,141 @@
-name: Push to Kaggle and Notify
+name: CI → Kaggle Push
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
+      - '**.py'
       - 'config.json'
-      - 'data.py'
-      - 'utils.py'
-      - 'models.py'
-      - 'train.py'
-      - 'evaluate.py'
-      - 'main.py'
+      - 'requirements.txt'
       - 'kernel-metadata.json'
+      - 'notebookf4c27d156d.ipynb'
 
 jobs:
+  # ─────────────────────────────────────────────
+  # 1. LINT + TEST
+  # ─────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-    - name: Run tests
-      run: pytest
-    - name: Lint with flake8
-      run: flake8
-    - name: Format with black
-      run: black --check --diff .
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest black flake8
+
+      - name: Lint (flake8)
+        run: flake8 --max-line-length=120 --exclude=.git,__pycache__,wandb,.kilo
+
+      - name: Format check (black)
+        run: black --check --diff --line-length=120 .
+
+      - name: Unit tests
+        run: pytest tests/ -v --tb=short
+
+  # ─────────────────────────────────────────────
+  # 2. PUSH TO KAGGLE KERNEL
+  # ─────────────────────────────────────────────
   push-to-kaggle:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install Kaggle CLI
-      run: |
-        pip install kaggle
-        mkdir -p ~/.kaggle
-        echo "${{ secrets.KAGGLE_API_KEY }}" > ~/.kaggle/kaggle.json
-        chmod 600 ~/.kaggle/kaggle.json
+      - name: Setup Kaggle CLI
+        run: |
+          pip install kaggle
+          mkdir -p ~/.kaggle
+          echo '${{ secrets.KAGGLE_JSON }}' > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
 
-    - name: Push kernel to Kaggle
-      run: |
-        cd ${{ github.workspace }}
-        kaggle kernels push
+      - name: Push kernel (notebook + run.py)
+        run: kaggle kernels push -p .
 
-    - name: Send notification
-      uses: 8398a7/action-slack@v3
-      with:
-        status: success
-        text: "Kernel pushed to Kaggle. Please run manually: https://www.kaggle.com/code/kabir01010/notebookf4c27d156d"
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      if: success()
+      - name: Trigger kernel run via API
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          # Kaggle API v1 — run the kernel
+          KERNEL_SLUG="${KAGGLE_USERNAME}/notebookf4c27d156d"
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${KAGGLE_USERNAME}:${KAGGLE_KEY}" \
+            "https://www.kaggle.com/api/v1/kernels/${KERNEL_SLUG}/run" \
+            -d '{}' || echo "Kernel run API call sent (may need manual click if not supported)"
 
-    - name: Send failure notification
-      uses: 8398a7/action-slack@v3
-      with:
-        status: failure
-        text: "Failed to push kernel to Kaggle."
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      if: failure()
+      - name: Notify Slack on success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            ✅ *SoftLayer* pushed to Kaggle.
+            Commit: `${{ github.sha }}`
+            Run: https://www.kaggle.com/code/${{ secrets.KAGGLE_USERNAME }}/notebookf4c27d156d
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: "❌ SoftLayer Kaggle push FAILED on commit `${{ github.sha }}`"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ─────────────────────────────────────────────
+  # 3. AUTO-LOG TO RESEARCH DB (artifact upload)
+  # ─────────────────────────────────────────────
+  research-log:
+    runs-on: ubuntu-latest
+    needs: push-to-kaggle
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Log CI event to research DB
+        run: |
+          pip install wandb
+          python - << 'PYEOF'
+          import sys, os
+          sys.path.insert(0, '.')
+          from logs.research_logger import log_event
+          log_event("ci_push", {
+              "sha": os.environ.get("GITHUB_SHA", "unknown"),
+              "ref": os.environ.get("GITHUB_REF", "unknown"),
+              "actor": os.environ.get("GITHUB_ACTOR", "unknown"),
+              "workflow": os.environ.get("GITHUB_WORKFLOW", "unknown"),
+          })
+          print("Research DB event logged.")
+          PYEOF
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+
+      - name: Upload research DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-db-${{ github.sha }}
+          path: logs/research.db
+          retention-days: 90

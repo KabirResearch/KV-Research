@@ -12,5 +12,7 @@ build/
 kaggle.json
 .env
 wandb/
-logs/
+# Ignore the generated research DB but keep the Python source
+logs/research.db
+logs/__pycache__/
 *.log

@@ -1,6 +1,6 @@
 import torch
 import pytest
-from utils import compute_loss, compute_entropy
+from utils.metrics import compute_loss, compute_entropy
 
 def test_compute_loss():
     logits = torch.randn(1, 10, 100)

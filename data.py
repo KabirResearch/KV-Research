@@ -1,7 +1,7 @@
 import logging
 from datasets import load_dataset
 from transformers import AutoTokenizer
-from utils import config
+from utils.config import config
 
 logger = logging.getLogger(__name__)
 

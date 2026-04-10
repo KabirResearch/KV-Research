@@ -1,0 +1,65 @@
+flowchart TD
+    subgraph DATA["Data Pipeline"]
+        A["Raw WikiText-103"] --> B["Tokenizer\nEleutherAI/pythia-1b"]
+        B --> C["input_ids + labels\n(-100 padding mask)"]
+        C --> DL1["train_dataloader"]
+        C --> DL2["test_dataloader"]
+    end
+
+    subgraph CRITIC["Critic Training (train_block_critic)"]
+        DL1 --> FWD["Frozen Base Model Forward\noutput_attentions=True\noutput_hidden_states=True"]
+        FWD --> HS["Hidden States h_0 ... h_L"]
+        FWD --> ATT["Attention Weights A_0 ... A_L"]
+        HS --> CRIT_IN["Block Mean Hidden\nTARGET_LAYERS avg"]
+        ATT --> ATGT["Attention Supervision Target\nsum attended / max+eps"]
+        CRIT_IN --> CRIT["LogTemporalCritic\nlog1p|h| → LayerNorm → Linear → GELU → Sigmoid"]
+        CRIT --> MSE["MSE Loss vs target"]
+        ATGT --> MSE
+        MSE --> TRAINED_C["Trained Critic"]
+    end
+
+    subgraph ROUTER["SoftPlanningRouter (Inference)"]
+        DL2 --> EMBED["Embedding + Early Layers"]
+        EMBED --> RL["Router Layer i"]
+        TRAINED_C --> RL
+        RL --> PROB["critic(h.detach()) → token probs"]
+        PROB --> THRESH["Dynamic Threshold\nquantile(probs, skip_rate)"]
+        THRESH -->|"prob >= thresh\nImportant"| FULL["Full Layer Forward"]
+        THRESH -->|"prob < thresh\nSkip"| IDENT["Identity: h_out = h_in\n(Residual-safe)"]
+        FULL --> NEXT["Next Layer ..."]
+        IDENT --> NEXT
+        NEXT --> LOGITS["Output Logits"]
+    end
+
+    subgraph BASELINES["Baseline Comparisons"]
+        BS1["Static Skip\n25% / 50%"]
+        BS2["Random Skip"]
+        BS3["Dynamic Token Pruning"]
+        BS4["Early Exit\nConfidence Threshold"]
+        BS5["Mixture of Experts MoE"]
+        BS6["Mixture of Depths MoD"]
+        BS7["Speculative Decoding\nDraft + Target"]
+    end
+
+    subgraph EVAL["Evaluation Suite"]
+        LOGITS --> PPL["Perplexity (PPL)\nNLL / token count"]
+        LOGITS --> ZS["Zero-Shot Benchmarks\nHellaSwag · PIQA · ARC-e · ARC-c"]
+        HS --> MANIFOLD["Manifold Analysis\nCKA Table · Cosine Sim per layer"]
+        FLOP_C["FLOP Counter\nfvcore / thop"] --> FLOPS["GFLOPs per forward pass"]
+        CUDA_T["CUDA Timer\ntorch.cuda.Event"] --> LAT["Kernel Latency (ms)\nper layer / end-to-end"]
+    end
+
+    subgraph REPORT["Results Table"]
+        PPL --> RT["Method | PPL ↓ | GFLOPs ↓ | Latency ↓ | HellaSwag ↑ | CKA"]
+        ZS --> RT
+        MANIFOLD --> RT
+        FLOPS --> RT
+        LAT --> RT
+        BS1 --> RT
+        BS2 --> RT
+        BS3 --> RT
+        BS4 --> RT
+        BS5 --> RT
+        BS6 --> RT
+        BS7 --> RT
+    end

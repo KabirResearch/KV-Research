@@ -2,7 +2,8 @@ import logging
 import torch
 import torch.nn as nn
 from models import VoCModel
-from utils import load_model, config, device
+from utils.model import load_model, device
+from utils.config import config
 from data import load_dataset_part
 import wandb
 
