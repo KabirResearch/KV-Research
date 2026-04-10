@@ -33,24 +33,22 @@ class TokenPruningLayer(nn.Module):
         # Score each token by its L2 norm (importance proxy)
         scores = hidden_states.norm(dim=-1)  # [batch, seq]
         top_indices = scores.topk(keep_k, dim=-1).indices  # [batch, keep_k]
-        top_indices_sorted, _ = top_indices.sort(dim=-1)
 
-        # Gather selected tokens
-        idx_exp = top_indices_sorted.unsqueeze(-1).expand(-1, -1, dim)
-        pruned = hidden_states.gather(1, idx_exp)  # [batch, keep_k, dim]
+        # Create a mask for important tokens
+        mask = torch.zeros((batch, seq), device=hidden_states.device, dtype=hidden_states.dtype)
+        mask.scatter_(1, top_indices, 1.0)
+        mask = mask.unsqueeze(-1)  # [batch, seq, 1]
 
-        # Process pruned tokens
-        # NOTE: positional args/kwargs may need adjustment for specific models
-        out = self.layer(pruned, *args, **kwargs)
+        # Mask unimportant tokens (set to zero)
+        masked_hidden = hidden_states * mask
+
+        # Pass through the layer (sequence length unchanged)
+        out = self.layer(masked_hidden, *args, **kwargs)
         out_h = out[0] if isinstance(out, tuple) else out
 
-        # Scatter back; unselected tokens keep identity
-        full_out = hidden_states.clone()
-        full_out.scatter_(1, idx_exp, out_h)
-
         if isinstance(out, tuple):
-            return (full_out,) + out[1:]
-        return full_out
+            return (out_h,) + out[1:]
+        return out_h
 
 
 def apply_token_pruning(model, keep_rate: float = 0.8):

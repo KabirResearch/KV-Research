@@ -63,6 +63,7 @@ def train_block_critic(
         for batch in train_loader:
             ids = batch["input_ids"].to(device)
 
+            # Always ensure output_attentions=True is passed
             with torch.no_grad():
                 outs = model(ids, output_attentions=True, output_hidden_states=True)
 
