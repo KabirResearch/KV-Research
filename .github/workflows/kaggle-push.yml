@@ -8,7 +8,7 @@ on:
       - 'config.json'
       - 'requirements.txt'
       - 'kernel-metadata.json'
-      - 'notebookf4c27d156d.ipynb'
+      - 'layerskippingscript.ipynb'
 
 jobs:
   # ─────────────────────────────────────────────
@@ -66,7 +66,7 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           # Kaggle API v1 — run the kernel
-          KERNEL_SLUG="${KAGGLE_USERNAME}/layersskippingscript"
+          KERNEL_SLUG="${KAGGLE_USERNAME}/layerskippingscript"
           curl -s -X POST \
             -H "Content-Type: application/json" \
             -u "${KAGGLE_USERNAME}:${KAGGLE_KEY}" \
