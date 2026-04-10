@@ -12,10 +12,10 @@ Pseudocode:
         tokens += active_tokens
     ppl = exp(nll / tokens)
 """
+
 import torch
 import time
 import logging
-from utils.metrics import compute_loss
 
 logger = logging.getLogger(__name__)
 

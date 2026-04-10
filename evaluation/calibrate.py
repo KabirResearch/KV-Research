@@ -11,7 +11,7 @@ Pseudocode:
         if ppl <= base_ppl * tolerance:
             best_threshold = threshold
 """
-import torch
+
 import logging
 from evaluation.evaluate import evaluate_goldilocks
 

@@ -2,16 +2,16 @@
 Tests for evaluation helpers: GFLOPs counter and evaluate_goldilocks PPL.
 Uses tiny tensor stubs — no real model download required in CI.
 """
+
 import math
 import torch
 import torch.nn as nn
-import pytest
 
 from evaluation.flops import measure_flops_manual
 from evaluation.evaluate import evaluate_goldilocks
 
-
 # ── Tiny GPT-NeoX stub ───────────────────────────────────────────────────────
+
 
 class _FakeConfig:
     hidden_size = 64
@@ -27,7 +27,7 @@ class _FakeLayer(nn.Module):
     def __init__(self, d=64):
         super().__init__()
         self.attn = nn.Linear(d, d)
-        self.mlp  = nn.Linear(d, d)
+        self.mlp = nn.Linear(d, d)
 
     def forward(self, h, **kwargs):
         return self.attn(h) + self.mlp(h), None
@@ -51,7 +51,7 @@ class _FakeModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.config = _FakeConfig()
-        self.device  = torch.device("cpu")
+        self.device = torch.device("cpu")
         self.gpt_neox = _FakeGPTNeoX()
         self.embed_in = nn.Embedding(200, 64)
         # LM head
@@ -80,7 +80,7 @@ def _make_loader(n_batches=3, seq_len=16, vocab=200, batch_size=2):
     """Tiny DataLoader returning real input_ids + labels with some -100 masks."""
     data = []
     for _ in range(n_batches):
-        ids    = torch.randint(1, vocab, (batch_size, seq_len))
+        ids = torch.randint(1, vocab, (batch_size, seq_len))
         labels = ids.clone()
         labels[:, -4:] = -100  # mask last 4 positions (padding sim)
         data.append({"input_ids": ids, "labels": labels})
@@ -88,6 +88,7 @@ def _make_loader(n_batches=3, seq_len=16, vocab=200, batch_size=2):
 
 
 # ── measure_flops_manual ─────────────────────────────────────────────────────
+
 
 class TestMeasureFlopsManual:
     def test_returns_positive_float(self):
@@ -98,7 +99,7 @@ class TestMeasureFlopsManual:
 
     def test_scales_with_seq_len(self):
         model = _FakeModel()
-        g64  = measure_flops_manual(model, seq_len=64)
+        g64 = measure_flops_manual(model, seq_len=64)
         g128 = measure_flops_manual(model, seq_len=128)
         # FLOPs should be strictly greater for longer sequences
         assert g128 > g64
@@ -112,6 +113,7 @@ class TestMeasureFlopsManual:
 
 # ── evaluate_goldilocks (PPL) ────────────────────────────────────────────────
 
+
 class TestEvaluateGoldilocks:
     def test_returns_ppl_and_throughput(self):
         model = _FakeModel()
@@ -121,7 +123,7 @@ class TestEvaluateGoldilocks:
         if isinstance(result, tuple):
             ppl, tput = result
         else:
-            ppl  = result["ppl"]
+            ppl = result["ppl"]
             tput = result["throughput"]
         assert ppl > 1.0, "PPL must be > 1 for a valid LM"
         assert tput > 0.0, "Throughput must be positive"
@@ -140,12 +142,11 @@ class TestEvaluateGoldilocks:
         """
         model = _FakeModel()
         # Loader with fully masked labels
-        data = [{"input_ids": torch.randint(1, 200, (2, 16)),
-                 "labels":    torch.full((2, 16), -100, dtype=torch.long)}
-                for _ in range(2)]
+        data = [
+            {"input_ids": torch.randint(1, 200, (2, 16)), "labels": torch.full((2, 16), -100, dtype=torch.long)}
+            for _ in range(2)
+        ]
         result = evaluate_goldilocks(model, data, device="cpu")
         ppl = result[0] if isinstance(result, tuple) else result["ppl"]
         # Cross-entropy with all ignore_index=-100 → loss = 0 → PPL = 1
-        assert abs(ppl - 1.0) < 1e-3 or math.isnan(ppl), (
-            "Fully-masked labels should give PPL ≈ 1.0"
-        )
+        assert abs(ppl - 1.0) < 1e-3 or math.isnan(ppl), "Fully-masked labels should give PPL ≈ 1.0"

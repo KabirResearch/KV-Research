@@ -16,8 +16,8 @@ Pseudocode:
         labels[labels == pad_token_id] = -100   ← CRITICAL
     dataset.set_format(["input_ids", "labels"])
 """
+
 import logging
-import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from utils.config import config
@@ -36,15 +36,15 @@ def load_dataset_part(split: str = None, min_text_length: int = 20):
     Returns:
         HuggingFace Dataset with columns: input_ids, labels
     """
-    split = split or config['dataset_split']
+    split = split or config["dataset_split"]
     logger.info(f"Loading dataset: {config['dataset_name']} / {config['dataset_config']} [{split}]")
 
-    dataset = load_dataset(config['dataset_name'], config['dataset_config'], split=split)
+    dataset = load_dataset(config["dataset_name"], config["dataset_config"], split=split)
     before = len(dataset)
     dataset = dataset.filter(lambda x: len(x["text"].strip()) > min_text_length)
     logger.info(f"Filtered {before} → {len(dataset)} samples (min_len={min_text_length})")
 
-    tokenizer = AutoTokenizer.from_pretrained(config['model_name'])
+    tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -53,13 +53,10 @@ def load_dataset_part(split: str = None, min_text_length: int = 20):
             example["text"],
             truncation=True,
             padding="max_length",
-            max_length=config['max_length'],
+            max_length=config["max_length"],
         )
         # -100 mask: padding tokens are ignored in loss computation
-        labels = [
-            [-100 if t == tokenizer.pad_token_id else t for t in ids]
-            for ids in outputs["input_ids"]
-        ]
+        labels = [[-100 if t == tokenizer.pad_token_id else t for t in ids] for ids in outputs["input_ids"]]
         outputs["labels"] = labels
         return outputs
 

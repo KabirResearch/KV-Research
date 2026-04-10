@@ -9,12 +9,13 @@ Pseudocode:
     for i in skip_set:
         layer[i] = IdentityLayer  (h_out = h_in)
 """
-import torch
+
 import torch.nn as nn
 
 
 class IdentityLayer(nn.Module):
     """Wraps a transformer layer with an identity forward (residual-safe skip)."""
+
     def __init__(self, layer):
         super().__init__()
         self.layer = layer

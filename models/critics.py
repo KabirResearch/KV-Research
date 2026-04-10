@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class LogTemporalCritic(nn.Module):
     def __init__(self, in_dim=2048, hidden_dim=256):
         super().__init__()

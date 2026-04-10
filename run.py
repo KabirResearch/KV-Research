@@ -8,12 +8,14 @@ Set Kaggle secrets (Add-ons → Secrets):
   WANDB_API_KEY  — your wandb API key
   GITHUB_TOKEN   — optional, for private repo
 """
+
 import os
 import sys
 import subprocess
 
 # ── Secrets ────────────────────────────────────────────────────────────
 from kaggle_secrets import UserSecretsClient  # type: ignore  # Kaggle-only
+
 secrets = UserSecretsClient()
 try:
     os.environ["WANDB_API_KEY"] = secrets.get_secret("WANDB_API_KEY")
@@ -30,8 +32,7 @@ else:
     subprocess.run(["git", "clone", REPO_URL, REPO_DIR], check=True)
 
 # ── Install extra deps not on Kaggle by default ─────────────────────────
-subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                "fvcore", "lm-eval", "wandb"], check=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "fvcore", "lm-eval", "wandb"], check=True)
 
 # ── Run experiments ─────────────────────────────────────────────────────
 sys.path.insert(0, REPO_DIR)

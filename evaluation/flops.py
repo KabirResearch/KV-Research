@@ -14,7 +14,7 @@ Pseudocode:
     flops = FlopCountAnalysis(model, input_ids)
     gflops = flops.total() / 1e9
 """
-import torch
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def measure_flops_manual(model, seq_len: int, batch_size: int = 1) -> float:
     """
     cfg = model.config
     D = cfg.hidden_size
-    D_ff = getattr(cfg, 'intermediate_size', D * 4)
+    D_ff = getattr(cfg, "intermediate_size", D * 4)
     num_heads = cfg.num_attention_heads
     head_dim = D // num_heads
     B, S = batch_size, seq_len
@@ -42,14 +42,14 @@ def measure_flops_manual(model, seq_len: int, batch_size: int = 1) -> float:
     total_flops = 0
     for layer in model.gpt_neox.layers:
         # Check if layer is an identity skip (IdentityLayer or similar)
-        if hasattr(layer, 'layer') and not hasattr(layer, 'router'):
+        if hasattr(layer, "layer") and not hasattr(layer, "router"):
             # Likely a static/random skip identity — 0 FLOPs
             continue
         # Attention: QKV projections + attention scores + output proj
         attn_flops = (
-            3 * 2 * B * S * D * D +   # QKV projections
-            2 * B * num_heads * S * S * head_dim +  # attn scores
-            2 * B * S * D * D          # output projection
+            3 * 2 * B * S * D * D  # QKV projections
+            + 2 * B * num_heads * S * S * head_dim  # attn scores
+            + 2 * B * S * D * D  # output projection
         )
         # FFN: two linear layers
         ffn_flops = 2 * 2 * B * S * D * D_ff

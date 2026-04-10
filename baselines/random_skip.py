@@ -10,8 +10,8 @@ Pseudocode:
     for i in skip_set:
         layer[i] = IdentityLayer
 """
+
 import random
-import torch.nn as nn
 from baselines.static_skip import IdentityLayer
 
 

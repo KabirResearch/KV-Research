@@ -3,17 +3,17 @@ Tests for baselines: static_skip, random_skip, and model/router components.
 These are fast unit tests that use a tiny 2-layer model stub instead of loading
 the full Pythia-1B, so they run in < 10 s with no GPU needed.
 """
+
 import torch
 import torch.nn as nn
-import pytest
 
 from baselines.static_skip import apply_static_skip
 from baselines.random_skip import apply_random_skip
 from models.critics import LogTemporalCritic
 from models.router import SoftPlanningRouter
 
-
 # ── Tiny model stub (avoids shipping a 2.5 GB model in CI) ──────────────────
+
 
 class _DummyLayer(nn.Module):
     def __init__(self, d=32):
@@ -47,6 +47,7 @@ class _DummyModel(nn.Module):
 
 # ── apply_static_skip ────────────────────────────────────────────────────────
 
+
 class TestStaticSkip:
     def _make(self):
         return _DummyModel(n_layers=4, d=32)
@@ -61,10 +62,7 @@ class TestStaticSkip:
     def test_skip_50pct_replaces_2_layers(self):
         model = self._make()
         apply_static_skip(model, skip_rate=0.50)
-        identity_count = sum(
-            1 for i in range(4)
-            if type(model.gpt_neox.layers[i]).__name__ == "IdentityLayer"
-        )
+        identity_count = sum(1 for i in range(4) if type(model.gpt_neox.layers[i]).__name__ == "IdentityLayer")
         assert identity_count == 2
 
     def test_zero_skip_rate_changes_nothing(self):
@@ -83,6 +81,7 @@ class TestStaticSkip:
 
 
 # ── apply_random_skip ────────────────────────────────────────────────────────
+
 
 class TestRandomSkip:
     def _make(self):
@@ -117,6 +116,7 @@ class TestRandomSkip:
 
 # ── LogTemporalCritic ────────────────────────────────────────────────────────
 
+
 class TestLogTemporalCritic:
     def test_output_shape(self):
         critic = LogTemporalCritic(in_dim=64, hidden_dim=32)
@@ -141,6 +141,7 @@ class TestLogTemporalCritic:
 
 
 # ── SoftPlanningRouter ───────────────────────────────────────────────────────
+
 
 class TestSoftPlanningRouter:
     def _setup(self, d=32):

@@ -5,6 +5,7 @@ All imports from this file will continue to work, but prefer:
     from models.router  import SoftPlanningRouter
     from models._legacy import VoCModel, Router, VoCSkipLayer, TokenLevelVoCSkipLayer
 """
+
 from models import (  # noqa: F401
     LogTemporalCritic,
     SoftPlanningRouter,

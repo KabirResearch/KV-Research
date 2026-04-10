@@ -16,6 +16,7 @@ Report:
     - End-to-end latency (ms per forward pass)
     - Per-layer latency breakdown (via hooks)
 """
+
 import torch
 import logging
 
@@ -84,6 +85,7 @@ def measure_per_layer_latency(model, input_ids: torch.Tensor, warmup: int = 5, r
             e_end.record()
             torch.cuda.synchronize()
             layer_times[layer_idx].append(e_start.elapsed_time(e_end))
+
         return hook
 
     hooks = []
@@ -95,6 +97,7 @@ def measure_per_layer_latency(model, input_ids: torch.Tensor, warmup: int = 5, r
         def make_pre_hook(idx, es):
             def pre_hook(module, inp):
                 es.record()
+
             return pre_hook
 
         hooks.append(layer.register_forward_pre_hook(make_pre_hook(i, e_start)))

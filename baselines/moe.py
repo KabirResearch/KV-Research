@@ -14,6 +14,7 @@ Pseudocode:
 Paper: Switch Transformers — Fedus et al. 2022
        https://arxiv.org/abs/2101.03961
 """
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,19 +26,21 @@ class MoEFFN(nn.Module):
     Replaces the dense FFN inside a transformer layer's MLP block.
     """
 
-    def __init__(self, hidden_size: int, intermediate_size: int,
-                 num_experts: int = 8, top_k: int = 2):
+    def __init__(self, hidden_size: int, intermediate_size: int, num_experts: int = 8, top_k: int = 2):
         super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
         # Each expert is a small FFN
-        self.experts = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(hidden_size, intermediate_size),
-                nn.GELU(),
-                nn.Linear(intermediate_size, hidden_size),
-            ) for _ in range(num_experts)
-        ])
+        self.experts = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(hidden_size, intermediate_size),
+                    nn.GELU(),
+                    nn.Linear(intermediate_size, hidden_size),
+                )
+                for _ in range(num_experts)
+            ]
+        )
         self.gate = nn.Linear(hidden_size, num_experts, bias=False)
 
     def forward(self, hidden_states):
@@ -51,10 +54,10 @@ class MoEFFN(nn.Module):
         output = torch.zeros_like(x_flat)
         for k in range(self.top_k):
             expert_idx = top_k_idx[:, k]  # [batch*seq]
-            w = weights[:, k:k+1]         # [batch*seq, 1]
+            w = weights[:, k : k + 1]  # [batch*seq, 1]
             # Route each token to its assigned expert (simple loop; vectorize for prod)
             for e in range(self.num_experts):
-                mask = (expert_idx == e)
+                mask = expert_idx == e
                 if mask.any():
                     output[mask] += w[mask] * self.experts[e](x_flat[mask])
 
@@ -78,8 +81,8 @@ def apply_moe(model, num_experts: int = 8, top_k: int = 2):
     """
     hidden_size = model.config.hidden_size
     # GPT-NeoX intermediate size is typically 4x hidden
-    intermediate_size = getattr(model.config, 'intermediate_size', hidden_size * 4)
+    intermediate_size = getattr(model.config, "intermediate_size", hidden_size * 4)
     for layer in model.gpt_neox.layers:
-        if hasattr(layer, 'mlp'):
+        if hasattr(layer, "mlp"):
             layer.mlp = MoEFFN(hidden_size, intermediate_size, num_experts, top_k)
     return model

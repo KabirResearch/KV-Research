@@ -1,11 +1,13 @@
 """
 Patchers — apply skip/routing wrappers to model layers.
 """
+
 import torch.nn as nn
 
 
 class _IdentitySkipLayer(nn.Module):
     """Stub: always passes hidden state through unchanged."""
+
     def __init__(self, layer):
         super().__init__()
         self._orig = layer
@@ -47,6 +49,7 @@ def apply_entropy_skip(model, cfg: dict):
 def apply_voc_skip(model, cfg: dict, router):
     """Apply VoC-Router layer-level skipping (legacy)."""
     from models._legacy import VoCSkipLayer
+
     cfg["num_layers"] = len(model.gpt_neox.layers)
     for i, layer in enumerate(model.gpt_neox.layers):
         model.gpt_neox.layers[i] = VoCSkipLayer(layer, i, cfg, router)
@@ -55,6 +58,7 @@ def apply_voc_skip(model, cfg: dict, router):
 def apply_token_level_voc_skip(model, cfg: dict, router):
     """Apply token-level VoC-Router skipping (legacy)."""
     from models._legacy import TokenLevelVoCSkipLayer
+
     cfg["num_layers"] = len(model.gpt_neox.layers)
     router.per_token = True
     for i, layer in enumerate(model.gpt_neox.layers):

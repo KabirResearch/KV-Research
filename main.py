@@ -12,6 +12,7 @@ Usage:
   python main.py --mode baselines
   python main.py --mode zero_shot
 """
+
 import argparse
 import torch
 import wandb
@@ -19,16 +20,13 @@ import wandb
 from utils.config import config
 from utils.logging import setup_logging
 from utils.model import load_model, device
-from data import load_dataset_part
 from data.dataset import load_dataset_part as load_dataset_masked
 from training.train_critic import train_block_critic
-from training.train_router import train_router
 from evaluation.evaluate import run_full, run_skip, evaluate_goldilocks
 from evaluation.flops import measure_flops_manual
 from evaluation.latency import measure_latency
 from evaluation.manifold import layer_cka_table
 from evaluation.zero_shot import run_zero_shot, print_zero_shot_table
-from evaluation.calibrate import calibrate_voc_thresholds
 from baselines.static_skip import apply_static_skip
 from baselines.random_skip import apply_random_skip
 from models.critics import LogTemporalCritic
@@ -40,6 +38,7 @@ logger = setup_logging()
 
 def _make_loader(split=None):
     from torch.utils.data import DataLoader
+
     ds = load_dataset_masked(split=split)
     return DataLoader(ds, batch_size=config.get("batch_size", 1))
 
@@ -59,9 +58,11 @@ def main():
         "--mode",
         choices=[
             "full",
-            "static_25", "static_50",
+            "static_25",
+            "static_50",
             "random_skip",
-            "critic_train", "critic_eval",
+            "critic_train",
+            "critic_eval",
             "baselines",
             "zero_shot",
             "flops",
@@ -122,6 +123,7 @@ def main():
 
     elif args.mode == "critic_eval":
         import os
+
         if not os.path.exists("critic.pth"):
             logger.error("critic.pth not found. Run: python main.py --mode critic_train")
             return
@@ -149,13 +151,14 @@ def main():
     elif args.mode == "baselines":
         from baselines.token_pruning import apply_token_pruning
         from baselines.early_exit import apply_early_exit
+
         results = []
         for name, fn, kwargs in [
-            ("static_25",  apply_static_skip,  {"skip_rate": 0.25}),
-            ("static_50",  apply_static_skip,  {"skip_rate": 0.50}),
-            ("random_25",  apply_random_skip,  {"skip_rate": 0.25}),
-            ("token_prune",apply_token_pruning, {"keep_rate": 0.75}),
-            ("early_exit", apply_early_exit,   {"confidence_threshold": 0.9, "min_exit_layer": 8}),
+            ("static_25", apply_static_skip, {"skip_rate": 0.25}),
+            ("static_50", apply_static_skip, {"skip_rate": 0.50}),
+            ("random_25", apply_random_skip, {"skip_rate": 0.25}),
+            ("token_prune", apply_token_pruning, {"keep_rate": 0.75}),
+            ("early_exit", apply_early_exit, {"confidence_threshold": 0.9, "min_exit_layer": 8}),
         ]:
             _init_wandb(f"baseline_{name}") if not args.no_wandb else None
             model, tokenizer = load_model()
@@ -189,11 +192,12 @@ def main():
 
     elif args.mode == "cka":
         import os
+
         if not os.path.exists("critic.pth"):
             logger.error("critic.pth not found. Run critic_train first.")
             return
-        model_full,  _ = load_model()
-        model_skip,  _ = load_model()
+        model_full, _ = load_model()
+        model_skip, _ = load_model()
         hidden_size = model_skip.config.hidden_size
         critic = LogTemporalCritic(in_dim=hidden_size).to(device)
         critic.load_state_dict(torch.load("critic.pth", map_location=device))

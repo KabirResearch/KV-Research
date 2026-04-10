@@ -12,10 +12,13 @@ Pseudocode:
             loss.backward(); optimizer.step()
         if no improvement for `patience` epochs: early stop
 """
+
 import torch
 import logging
+
 try:
     import wandb
+
     _WANDB = True
 except ImportError:
     _WANDB = False
@@ -37,13 +40,13 @@ def train_router(router, records: list, device: str = "cuda") -> object:
         trained router
     """
     router.train()
-    optimizer = torch.optim.Adam(router.parameters(), lr=config['learning_rate'])
+    optimizer = torch.optim.Adam(router.parameters(), lr=config["learning_rate"])
 
-    best_loss = float('inf')
+    best_loss = float("inf")
     patience = 5
     patience_counter = 0
 
-    for epoch in range(config['epochs']):
+    for epoch in range(config["epochs"]):
         total_loss = 0.0
         count = 0
 

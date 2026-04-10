@@ -14,11 +14,14 @@ Pseudocode:
         loss = MSE(pred, target)
         loss.backward(); optimizer.step()
 """
+
 import torch
 import torch.nn.functional as F
 import logging
+
 try:
     import wandb
+
     _WANDB = True
 except ImportError:
     _WANDB = False
@@ -70,15 +73,13 @@ def train_block_critic(
             )  # [num_target, batch, seq, seq]
             avg_attn = attn_stack.mean(dim=0).to(torch.float32)  # [batch, seq, seq]
             # Target: column sum (how much future tokens attend to each position)
-            target = avg_attn.sum(dim=-1, keepdim=True)          # [batch, seq, 1]
+            target = avg_attn.sum(dim=-1, keepdim=True)  # [batch, seq, 1]
             target = target / (target.max() + 1e-6)
 
             # Feature: block-level mean hidden state
-            h_block = torch.stack(
-                [outs.hidden_states[i] for i in TARGET_LAYERS]
-            ).mean(dim=0)  # [batch, seq, dim]
+            h_block = torch.stack([outs.hidden_states[i] for i in TARGET_LAYERS]).mean(dim=0)  # [batch, seq, dim]
 
-            preds = critic(h_block)           # [batch, seq, 1]
+            preds = critic(h_block)  # [batch, seq, 1]
             loss = F.mse_loss(preds, target)
 
             optimizer.zero_grad()

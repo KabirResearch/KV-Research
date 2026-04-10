@@ -2,6 +2,7 @@
 Legacy model classes (VoCModel, Router, VoCSkipLayer, etc.) kept for backward compatibility.
 New code should use models.critics.LogTemporalCritic and models.router.SoftPlanningRouter.
 """
+
 import torch
 import torch.nn as nn
 
@@ -22,9 +23,13 @@ class Router(nn.Module):
         self.per_token = per_token
         self.layer_norms = nn.ModuleList([nn.LayerNorm(4) for _ in range(num_layers)])
         self.net = nn.Sequential(
-            nn.Linear(5, 64), nn.ReLU(), nn.Dropout(0.1),
-            nn.Linear(64, 32), nn.ReLU(), nn.Dropout(0.1),
-            nn.Linear(32, 1)
+            nn.Linear(5, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(32, 1),
         )
 
     def forward(self, x):
@@ -37,7 +42,7 @@ class Router(nn.Module):
             norm_feat = torch.zeros_like(features)
             for i in range(batch * seq):
                 lid = layer_ids[i].item()
-                norm_feat[i] = self.layer_norms[lid](features[i:i+1])
+                norm_feat[i] = self.layer_norms[lid](features[i : i + 1])
             x_norm = torch.cat([norm_feat, layer_pos.unsqueeze(1)], dim=1)
             return self.net(x_norm).view(batch, seq)
         else:
@@ -61,7 +66,9 @@ class VoCSkipLayer(nn.Module):
         var = hidden_states.var(dim=1).mean(dim=1)
         ratio = hidden_states.norm(dim=[1, 2]) / (prev.norm(dim=[1, 2]) + 1e-6)
         abs_mean = hidden_states.abs().mean(dim=[1, 2])
-        layer_pos = torch.full((hidden_states.size(0),), self.layer_id / self.config["num_layers"], device=hidden_states.device)
+        layer_pos = torch.full(
+            (hidden_states.size(0),), self.layer_id / self.config["num_layers"], device=hidden_states.device
+        )
         feat = torch.stack([delta, var, ratio, abs_mean, layer_pos], dim=1).float()
         self.config["prev_hidden"] = hidden_states.detach()
 

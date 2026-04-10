@@ -13,6 +13,7 @@ Formulae:
 
     CosSim(h_base, h_skip) = dot(h_base, h_skip) / (|h_base| * |h_skip|)
 """
+
 import torch
 import torch.nn.functional as F
 import logging
@@ -70,10 +71,7 @@ def _extract_hidden_states(model, dataloader, device: str = "cuda", max_batches:
             if all_hs is None:
                 all_hs = [h.view(-1, h.shape[-1]).cpu() for h in hs]
             else:
-                all_hs = [
-                    torch.cat([all_hs[j], hs[j].view(-1, hs[j].shape[-1]).cpu()])
-                    for j in range(len(hs))
-                ]
+                all_hs = [torch.cat([all_hs[j], hs[j].view(-1, hs[j].shape[-1]).cpu()]) for j in range(len(hs))]
 
     return all_hs  # [num_layers+1] list of [n_tokens, dim]
 

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class SoftPlanningRouter(nn.Module):
     def __init__(self, layer, critic, skip_rate=0.5):
         super().__init__()

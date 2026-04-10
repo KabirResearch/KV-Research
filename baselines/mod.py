@@ -17,12 +17,13 @@ Pseudocode:
 Paper: Mixture of Depths — Raposo et al. 2024
        https://arxiv.org/abs/2404.02258
 """
-import torch
+
 import torch.nn as nn
 
 
 class MoDRouter(nn.Module):
     """Lightweight token router: projects hidden dim to scalar score."""
+
     def __init__(self, hidden_size: int):
         super().__init__()
         self.proj = nn.Linear(hidden_size, 1, bias=False)

@@ -9,6 +9,7 @@ import wandb
 
 logger = logging.getLogger(__name__)
 
+
 def train_voc():
     logger.info("Starting VoC model training")
     model, tokenizer = load_model()
@@ -20,13 +21,11 @@ def train_voc():
         layer_id = module.layer_id
         h_in = input[0].detach().float()
         h_out = output[0].detach().float()
-        delta = (h_out - h_in).abs().mean(dim=[1,2])
+        delta = (h_out - h_in).abs().mean(dim=[1, 2])
         delta = torch.clamp(delta, 0, 10)
-        feat = torch.stack([
-            h_in.norm(dim=-1).mean(dim=1),
-            h_in.abs().mean(dim=[1,2]),
-            torch.full_like(delta, layer_id / 24.0)
-        ], dim=1)
+        feat = torch.stack(
+            [h_in.norm(dim=-1).mean(dim=1), h_in.abs().mean(dim=[1, 2]), torch.full_like(delta, layer_id / 24.0)], dim=1
+        )
         features.append(feat.cpu())
         targets.append(delta.cpu())
 
@@ -36,7 +35,7 @@ def train_voc():
         hooks.append(layer.register_forward_hook(hook_fn))
 
     for i, batch in enumerate(dataset):
-        if i > config['voc_collect_samples']:
+        if i > config["voc_collect_samples"]:
             break
         if i % 100 == 0:
             logger.info(f"Collecting features: {i}/{config['voc_collect_samples']}")
@@ -58,13 +57,13 @@ def train_voc():
     X = (X - X_mean) / X_std
     Y = (Y - Y_mean) / Y_std
     dataset_voc = torch.utils.data.TensorDataset(X, Y)
-    dataloader = torch.utils.data.DataLoader(dataset_voc, batch_size=config['batch_size'], shuffle=True)
+    dataloader = torch.utils.data.DataLoader(dataset_voc, batch_size=config["batch_size"], shuffle=True)
 
     voc_model = VoCModel().to(device).float()
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(voc_model.parameters(), lr=config['learning_rate'])
+    optimizer = torch.optim.Adam(voc_model.parameters(), lr=config["learning_rate"])
 
-    for epoch in range(config['epochs']):
+    for epoch in range(config["epochs"]):
         total_loss = 0
         for x, y in dataloader:
             x = x.float().to(device)
@@ -75,7 +74,7 @@ def train_voc():
                 continue
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(voc_model.parameters(), config['clip_grad_norm'])
+            torch.nn.utils.clip_grad_norm_(voc_model.parameters(), config["clip_grad_norm"])
             optimizer.step()
             total_loss += loss.item()
         avg_loss = total_loss / len(dataloader)
@@ -84,13 +83,14 @@ def train_voc():
 
     return voc_model
 
+
 def train_router(router, records):
     router.train()
-    opt = torch.optim.Adam(router.parameters(), lr=config['learning_rate'])
-    best_loss = float('inf')
+    opt = torch.optim.Adam(router.parameters(), lr=config["learning_rate"])
+    best_loss = float("inf")
     patience = 5
     patience_counter = 0
-    for epoch in range(config['epochs']):
+    for epoch in range(config["epochs"]):
         total_loss = 0
         count = 0
         for r in records:

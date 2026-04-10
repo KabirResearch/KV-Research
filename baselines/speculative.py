@@ -23,6 +23,7 @@ Pseudocode:
 Paper: Speculative Decoding — Leviathan et al. 2023
        https://arxiv.org/abs/2211.17192
 """
+
 import torch
 import torch.nn.functional as F
 
@@ -77,7 +78,7 @@ def speculative_decode(
         # --- Step 2: Target scores context + all K draft tokens in one pass ---
         full_input = torch.cat([generated, draft_tokens], dim=-1)
         target_out = target_model(full_input)
-        target_logits = target_out.logits[:, generated.shape[1] - 1: -1, :] / temperature
+        target_logits = target_out.logits[:, generated.shape[1] - 1 : -1, :] / temperature
         target_probs = F.softmax(target_logits, dim=-1)  # [1, K, vocab]
 
         # --- Step 3: Acceptance sampling ---
@@ -90,10 +91,16 @@ def speculative_decode(
                 accepted.append(draft_ids[k])
             else:
                 # Resample from corrected distribution
-                corrected = (target_probs[:, k, :] - F.softmax(
-                    draft_model(torch.cat([generated, *accepted], dim=-1) if accepted
-                               else generated).logits[:, -1, :] / temperature, dim=-1
-                )).clamp(min=0)
+                corrected = (
+                    target_probs[:, k, :]
+                    - F.softmax(
+                        draft_model(torch.cat([generated, *accepted], dim=-1) if accepted else generated).logits[
+                            :, -1, :
+                        ]
+                        / temperature,
+                        dim=-1,
+                    )
+                ).clamp(min=0)
                 corrected = corrected / (corrected.sum() + 1e-9)
                 resampled = torch.multinomial(corrected, 1)
                 accepted.append(resampled)

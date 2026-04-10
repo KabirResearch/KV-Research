@@ -12,6 +12,7 @@ Pseudocode:
     results = evaluator.simple_evaluate(model=lm, tasks=[...])
     return results['results']
 """
+
 import logging
 
 logger = logging.getLogger(__name__)

@@ -15,11 +15,11 @@ Usage:
     log_agent_interaction(prompt="...", response="...", context="critic_train")
     rows = query_log(event_type="eval_result")
 """
+
 import sqlite3
 import json
 import os
 import subprocess
-import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -73,11 +73,15 @@ _ensure_schema()
 
 def _git_head() -> str:
     try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(Path(__file__).parent.parent),
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(Path(__file__).parent.parent),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
     except Exception:
         return "unknown"
 
@@ -168,9 +172,7 @@ def query_log(event_type: str = None, limit: int = 50) -> list[dict]:
                 (event_type, limit),
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
     result = []
     for row in rows:
         d = dict(row)
@@ -188,9 +190,7 @@ def query_agent_log(context: str = None, limit: int = 20) -> list[dict]:
                 (context, limit),
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM agent_interactions ORDER BY ts DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM agent_interactions ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
 
 
