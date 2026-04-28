@@ -15,8 +15,10 @@ def load_model():
         return model_cache[model_name]
     logger.info(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name).float().to(device)
+    model_dtype = torch.float16 if device.type == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=model_dtype).to(device)
     model.eval()
+    logger.info("Loaded model on %s with dtype %s", device, model_dtype)
     if tokenizer.pad_token is None:
         logger.debug("Setting pad token to eos token")
         tokenizer.pad_token = tokenizer.eos_token
