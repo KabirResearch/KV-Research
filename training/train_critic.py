@@ -91,8 +91,7 @@ def train_block_critic(
 
             if not outs.attentions:
                 raise RuntimeError(
-                    "Model did not return attention tensors. "
-                    "Critic training requires eager attention backend."
+                    "Model did not return attention tensors. " "Critic training requires eager attention backend."
                 )
 
             # Attention supervision target: how much each token is attended to
