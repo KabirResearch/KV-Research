@@ -122,7 +122,7 @@ class TestLogTemporalCritic:
         critic = LogTemporalCritic(in_dim=64, hidden_dim=32)
         h = torch.randn(2, 10, 64)
         out = critic(h)
-        assert out.shape == (2, 10, 1)
+        assert out.shape == (2, 10)
 
     def test_output_in_unit_interval(self):
         critic = LogTemporalCritic(in_dim=64, hidden_dim=32)
@@ -155,6 +155,15 @@ class TestSoftPlanningRouter:
         h = torch.randn(1, 8, 32)
         out = router(h)
         # Router may return tuple or tensor depending on implementation
+        if isinstance(out, tuple):
+            out = out[0]
+        assert out.shape == (1, 8, 32)
+
+    def test_accepts_layer_kwargs(self):
+        router = self._setup(d=32)
+        h = torch.randn(1, 8, 32)
+        attention_mask = torch.ones(1, 8)
+        out = router(h, attention_mask=attention_mask)
         if isinstance(out, tuple):
             out = out[0]
         assert out.shape == (1, 8, 32)

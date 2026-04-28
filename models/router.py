@@ -9,11 +9,19 @@ class SoftPlanningRouter(nn.Module):
         self.critic = critic
         self.skip_rate = skip_rate
 
-    def forward(self, h):
-        # h: [batch, seq, hidden]
+    def forward(self, hidden_states, *args, **kwargs):
+        # hidden_states: [batch, seq, hidden]
         with torch.no_grad():
-            probs = self.critic(h.detach())  # [batch, seq]
+            critic = self.critic.module if isinstance(self.critic, nn.DataParallel) else self.critic
+            critic_dtype = next(critic.parameters()).dtype
+            probs = critic(hidden_states.detach().to(dtype=critic_dtype))  # [batch, seq]
             thresh = torch.quantile(probs, 1 - self.skip_rate)
-            mask = (probs >= thresh).float().unsqueeze(-1)  # [batch, seq, 1]
-        h_out = self.layer(h) * mask + h * (1 - mask)
-        return h_out
+            mask = (probs >= thresh).to(dtype=hidden_states.dtype).unsqueeze(-1)  # [batch, seq, 1]
+
+        layer_out = self.layer(hidden_states, *args, **kwargs)
+        layer_hidden = layer_out[0] if isinstance(layer_out, tuple) else layer_out
+        mixed_hidden = layer_hidden * mask + hidden_states * (1 - mask)
+
+        if isinstance(layer_out, tuple):
+            return (mixed_hidden,) + layer_out[1:]
+        return (mixed_hidden,)
