@@ -18,6 +18,7 @@ Pseudocode:
 import torch
 import torch.nn.functional as F
 import logging
+import torch.cuda.amp as amp
 
 try:
     import wandb
@@ -31,6 +32,18 @@ from logs.research_logger import log_event
 logger = logging.getLogger(__name__)
 
 TARGET_LAYERS = [10, 12, 14]  # Adjust for model depth
+
+
+def _ensure_eager_attention(model):
+    """Force eager attention so the model returns attention tensors."""
+    if hasattr(model, "set_attn_implementation"):
+        current_impl = getattr(model.config, "_attn_implementation", None)
+        if current_impl != "eager":
+            logger.info(
+                "Switching attention backend from %s to eager for critic training",
+                current_impl,
+            )
+            model.set_attn_implementation("eager")
 
 
 def train_block_critic(
@@ -54,7 +67,16 @@ def train_block_critic(
     """
     hidden_size = model.config.hidden_size
     critic = LogTemporalCritic(in_dim=hidden_size).to(device)
+
+    # Enable multi-GPU support
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
+        critic = torch.nn.DataParallel(critic)
+
     optimizer = torch.optim.Adam(critic.parameters(), lr=lr)
+    scaler = amp.GradScaler()  # Enable mixed precision training
+
+    _ensure_eager_attention(model)
 
     logger.info(f"Training LogTemporalCritic on layers {TARGET_LAYERS} for {epochs} epochs")
 
@@ -67,25 +89,31 @@ def train_block_critic(
             with torch.no_grad():
                 outs = model(ids, output_attentions=True, output_hidden_states=True)
 
+            if not outs.attentions:
+                raise RuntimeError(
+                    "Model did not return attention tensors. "
+                    "Critic training requires eager attention backend."
+                )
+
             # Attention supervision target: how much each token is attended to
-            # attn: [num_layers, batch, heads, seq, seq] → average over heads → [batch, seq, seq]
             attn_stack = torch.stack(
                 [outs.attentions[i].mean(dim=1) for i in TARGET_LAYERS]
             )  # [num_target, batch, seq, seq]
             avg_attn = attn_stack.mean(dim=0).to(torch.float32)  # [batch, seq, seq]
-            # Target: column sum (how much future tokens attend to each position)
             target = avg_attn.sum(dim=-1, keepdim=True)  # [batch, seq, 1]
             target = target / (target.max() + 1e-6)
 
             # Feature: block-level mean hidden state
             h_block = torch.stack([outs.hidden_states[i] for i in TARGET_LAYERS]).mean(dim=0)  # [batch, seq, dim]
 
-            preds = critic(h_block)  # [batch, seq, 1]
-            loss = F.mse_loss(preds, target)
+            with amp.autocast():
+                preds = critic(h_block)  # [batch, seq, 1]
+                loss = F.mse_loss(preds, target)
 
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             total_loss += loss.item()
 
         avg = total_loss / len(train_loader)
