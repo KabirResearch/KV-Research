@@ -18,7 +18,6 @@ Pseudocode:
 import torch
 import torch.nn.functional as F
 import logging
-import torch.cuda.amp as amp
 
 try:
     import wandb
@@ -68,15 +67,25 @@ def train_block_critic(
     hidden_size = model.config.hidden_size
     critic = LogTemporalCritic(in_dim=hidden_size).to(device)
 
-    # Enable multi-GPU support
-    if torch.cuda.device_count() > 1:
+    num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    batch_size = getattr(train_loader, "batch_size", 1) or 1
+    use_data_parallel = torch.cuda.is_available() and num_devices > 1 and batch_size >= num_devices
+
+    if use_data_parallel:
         model = torch.nn.DataParallel(model)
         critic = torch.nn.DataParallel(critic)
+    elif torch.cuda.is_available() and num_devices > 1:
+        logger.warning(
+            "Skipping DataParallel for critic training because batch_size=%s is smaller than num_gpus=%s.",
+            batch_size,
+            num_devices,
+        )
 
     optimizer = torch.optim.Adam(critic.parameters(), lr=lr)
-    scaler = amp.GradScaler()  # Enable mixed precision training
+    scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available())
 
-    _ensure_eager_attention(model)
+    base_model = model.module if isinstance(model, torch.nn.DataParallel) else model
+    _ensure_eager_attention(base_model)
 
     logger.info(f"Training LogTemporalCritic on layers {TARGET_LAYERS} for {epochs} epochs")
 
@@ -85,9 +94,16 @@ def train_block_critic(
         for batch in train_loader:
             ids = batch["input_ids"].to(device)
 
+            model_to_call = model
+            critic_to_call = critic
+            if isinstance(model, torch.nn.DataParallel) and ids.size(0) < num_devices:
+                model_to_call = model.module
+            if isinstance(critic, torch.nn.DataParallel) and ids.size(0) < num_devices:
+                critic_to_call = critic.module
+
             # Always ensure output_attentions=True is passed
             with torch.no_grad():
-                outs = model(ids, output_attentions=True, output_hidden_states=True)
+                outs = model_to_call(input_ids=ids, output_attentions=True, output_hidden_states=True)
 
             if not outs.attentions:
                 raise RuntimeError(
@@ -99,14 +115,14 @@ def train_block_critic(
                 [outs.attentions[i].mean(dim=1) for i in TARGET_LAYERS]
             )  # [num_target, batch, seq, seq]
             avg_attn = attn_stack.mean(dim=0).to(torch.float32)  # [batch, seq, seq]
-            target = avg_attn.sum(dim=-1, keepdim=True)  # [batch, seq, 1]
+            target = avg_attn.sum(dim=-1)  # [batch, seq]
             target = target / (target.max() + 1e-6)
 
             # Feature: block-level mean hidden state
             h_block = torch.stack([outs.hidden_states[i] for i in TARGET_LAYERS]).mean(dim=0)  # [batch, seq, dim]
 
-            with amp.autocast():
-                preds = critic(h_block)  # [batch, seq, 1]
+            with torch.amp.autocast("cuda", enabled=torch.cuda.is_available()):
+                preds = critic_to_call(h_block)  # [batch, seq, 1]
                 loss = F.mse_loss(preds, target)
 
             optimizer.zero_grad()
@@ -122,4 +138,4 @@ def train_block_critic(
         log_event("critic_epoch", {"epoch": epoch, "mse_loss": avg})
 
     log_event("critic_training_complete", {"epochs": epochs})
-    return critic
+    return critic.module if isinstance(critic, torch.nn.DataParallel) else critic

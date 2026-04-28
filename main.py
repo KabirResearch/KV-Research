@@ -36,11 +36,11 @@ from logs.research_logger import log_event
 logger = setup_logging()
 
 
-def _make_loader(split=None):
+def _make_loader(split=None, batch_size=None, drop_last: bool = False):
     from torch.utils.data import DataLoader
 
     ds = load_dataset_masked(split=split)
-    return DataLoader(ds, batch_size=config.get("batch_size", 1))
+    return DataLoader(ds, batch_size=batch_size or config.get("batch_size", 1), drop_last=drop_last)
 
 
 def _init_wandb(run_name: str):
@@ -112,7 +112,13 @@ def main():
     elif args.mode == "critic_train":
         _init_wandb("critic_train") if not args.no_wandb else None
         model, tokenizer = load_model()
-        train_loader = _make_loader(config.get("dataset_split", "test[:1%]"))
+        num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+        critic_batch_size = max(config.get("batch_size", 1), num_gpus)
+        train_loader = _make_loader(
+            config.get("dataset_split", "test[:1%]"),
+            batch_size=critic_batch_size,
+            drop_last=torch.cuda.is_available() and num_gpus > 1,
+        )
         critic = train_block_critic(model, train_loader, epochs=args.epochs, device=str(device))
         torch.save(critic.state_dict(), "critic.pth")
         logger.info("Saved critic.pth")
