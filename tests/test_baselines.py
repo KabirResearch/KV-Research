@@ -144,10 +144,10 @@ class TestLogTemporalCritic:
 
 
 class TestSoftPlanningRouter:
-    def _setup(self, d=32):
+    def _setup(self, d=32, **router_kwargs):
         layer = _DummyLayer(d)
         critic = LogTemporalCritic(in_dim=d, hidden_dim=16)
-        router = SoftPlanningRouter(layer, critic, skip_rate=0.5)
+        router = SoftPlanningRouter(layer, critic, skip_rate=0.5, **router_kwargs)
         return router
 
     def test_output_shape(self):
@@ -167,6 +167,21 @@ class TestSoftPlanningRouter:
         if isinstance(out, tuple):
             out = out[0]
         assert out.shape == (1, 8, 32)
+
+    def test_cached_threshold_reuses_state(self):
+        router = self._setup(d=32, threshold_refresh_every=1000, threshold_sample_size=8)
+        h = torch.randn(1, 8, 32)
+
+        out1 = router(h)
+        out2 = router(h)
+
+        for out in (out1, out2):
+            if isinstance(out, tuple):
+                out = out[0]
+            assert out.shape == (1, 8, 32)
+
+        assert router._cached_threshold is not None
+        assert router._forward_calls == 2
 
     def test_zero_skip_rate_identity_for_all(self):
         d = 32

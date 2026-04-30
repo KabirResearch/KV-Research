@@ -108,6 +108,20 @@ Layer_skpping/
 - TARGET_LAYERS = [10, 12, 14]  (deeper layers first; empirically most skippable)
 - Code: `models/critics.py`, `models/router.py`, `training/train_critic.py`
 
+### v5.1 -- Router Threshold Caching (throughput fix)
+- Cause: exact `torch.quantile` on every router call makes skip25 and skip50 pay almost the same threshold-selection cost.
+- Why skip50 lagged: the per-token gate still spent time on a full-sequence threshold calculation, so the extra skip opportunities at 50% could not dominate the router overhead.
+- Implementation plan:
+  - Replace full quantile selection with a cached threshold refreshed from a small strided sample.
+  - Smooth cache updates with an EMA so the threshold stays stable across nearby batches.
+  - Keep the full-batch skip fast path when all tokens fall below the current threshold.
+  - Expose `threshold_refresh_every`, `threshold_sample_size`, and `threshold_momentum` as tuning knobs for later sweeps.
+- Experiment plan:
+  1. Re-run the current validation slice with skip25 and skip50 to confirm skip50 now outruns skip25.
+  2. Measure PPL, throughput, and CUDA latency with `evaluation/latency.py` so speed gains are not just wall-clock noise.
+  3. Sweep `threshold_refresh_every` in `{1, 4, 8, 16}` and `threshold_sample_size` in `{32, 64, 128}` to find the best speed/quality tradeoff.
+  4. If quality holds, widen the routing study by expanding `target_layers` and then resweep `skip_rate` to map the Pareto frontier.
+
 ### v6 -- Mixture of Experts (MoE)
 - Replace MLP block with sparse top-k MoE
 - Maintains same parameter count; redistributes compute
