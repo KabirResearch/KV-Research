@@ -1,6 +1,7 @@
 import torch
 from utils.model import load_model
-from models import apply_skip, apply_entropy_skip, apply_voc_skip, Router
+from models.patchers import apply_skip, apply_entropy_skip, apply_voc_skip
+from models._legacy import Router
 
 
 def make_dummy_input(tokenizer, seq_len=16):

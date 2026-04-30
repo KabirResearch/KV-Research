@@ -27,6 +27,7 @@ from evaluation.flops import measure_flops_manual
 from evaluation.latency import measure_latency
 from evaluation.manifold import layer_cka_table
 from evaluation.zero_shot import run_zero_shot, print_zero_shot_table
+from evaluation.manifold import layer_cosine_sim_table
 from baselines.static_skip import apply_static_skip
 from baselines.random_skip import apply_random_skip
 from models.critics import LogTemporalCritic
@@ -150,7 +151,8 @@ def main():
         result = {"method": f"softlayer_skip{int(args.skip_rate*100)}", "ppl": ppl, "throughput": tput}
         logger.info(f"SoftLayer: PPL={ppl:.4f}, throughput={tput:.1f} tok/s")
         if not args.no_wandb:
-            wandb.log(result)
+            wandb.log({"ppl": ppl, "throughput": tput})
+            wandb.run.summary.update({"ppl": ppl, "throughput": tput})
             wandb.finish()
         log_event("eval_result", result)
 
@@ -173,16 +175,26 @@ def main():
             r["method"] = name
             results.append(r)
             if not args.no_wandb:
-                wandb.log(r)
+                wandb.log({"ppl": r["ppl"], "throughput": r["throughput"]})
+                wandb.run.summary.update({"ppl": r["ppl"], "throughput": r["throughput"]})
                 wandb.finish()
         for r in results:
             print(f"{r['method']:20s}  PPL={r['ppl']:.4f}  tput={r['throughput']:.1f}")
         log_event("baselines_results", {"results": results})
 
     elif args.mode == "zero_shot":
+        _init_wandb("zero_shot") if not args.no_wandb else None
         model, tokenizer = load_model()
         result = run_zero_shot(model, tokenizer, device=str(device))
         print_zero_shot_table(result)
+        if not args.no_wandb:
+            flat = {
+                f"zero_shot/{task}": res.get("acc,none", res.get("acc_norm,none", 0))
+                for task, res in result.items()
+            }
+            wandb.log(flat)
+            wandb.run.summary.update(flat)
+            wandb.finish()
         log_event("zero_shot_result", result)
 
     elif args.mode == "flops":
@@ -211,11 +223,19 @@ def main():
         for i in config.get("target_layers", [10, 12, 14]):
             orig = model_skip.gpt_neox.layers[i]
             model_skip.gpt_neox.layers[i] = SoftPlanningRouter(orig, critic, skip_rate=args.skip_rate)
+        _init_wandb("cka_analysis") if not args.no_wandb else None
         val_loader = _make_loader(config.get("val_dataset_split", "validation[:1%]"))
-        table = layer_cka_table(model_full, model_skip, val_loader, device=str(device))
-        for row in table:
-            print(f"Layer {row['layer']:2d}  CKA={row['cka']:.4f}  CosSim={row['cos_sim']:.4f}")
-        log_event("cka_result", {"table": table})
+        cka_table = layer_cka_table(model_full, model_skip, val_loader, device=str(device))
+        cos_table = layer_cosine_sim_table(model_full, model_skip, val_loader, device=str(device))
+        combined = []
+        for (li, cka), (_, cos) in zip(cka_table, cos_table):
+            print(f"Layer {li:2d}  CKA={cka:.4f}  CosSim={cos:.4f}")
+            combined.append({"layer": li, "cka": cka, "cos_sim": cos})
+        if not args.no_wandb:
+            for row in combined:
+                wandb.log({"layer": row["layer"], "cka": row["cka"], "cos_sim": row["cos_sim"]})
+            wandb.finish()
+        log_event("cka_result", {"table": combined})
 
 
 if __name__ == "__main__":
