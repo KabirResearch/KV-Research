@@ -66,6 +66,7 @@ def main():
             "critic_eval",
             "baselines",
             "zero_shot",
+            "zero_shot_skip",
             "flops",
             "latency",
             "cka",
@@ -195,6 +196,34 @@ def main():
             wandb.run.summary.update(flat)
             wandb.finish()
         log_event("zero_shot_result", result)
+
+    elif args.mode == "zero_shot_skip":
+        import os
+
+        if not os.path.exists("critic.pth"):
+            logger.error("critic.pth not found. Run: python main.py --mode critic_train")
+            return
+        _init_wandb(f"zero_shot_skip{int(args.skip_rate * 100)}") if not args.no_wandb else None
+        model, tokenizer = load_model()
+        hidden_size = model.config.hidden_size
+        critic = LogTemporalCritic(in_dim=hidden_size).to(device)
+        critic.load_state_dict(torch.load("critic.pth", map_location=device))
+        target_layers = config.get("target_layers", [10, 12, 14])
+        for i in target_layers:
+            orig = model.gpt_neox.layers[i]
+            model.gpt_neox.layers[i] = SoftPlanningRouter(orig, critic, skip_rate=args.skip_rate)
+        logger.info(f"Running zero-shot eval on SoftLayer-patched model (skip_rate={args.skip_rate})")
+        result = run_zero_shot(model, tokenizer, device=str(device))
+        print_zero_shot_table(result)
+        if not args.no_wandb:
+            flat = {
+                f"zero_shot_skip/{task}": res.get("acc,none", res.get("acc_norm,none", 0))
+                for task, res in result.items()
+            }
+            wandb.log(flat)
+            wandb.run.summary.update(flat)
+            wandb.finish()
+        log_event("zero_shot_skip_result", result)
 
     elif args.mode == "flops":
         model, tokenizer = load_model()

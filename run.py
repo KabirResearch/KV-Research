@@ -83,10 +83,34 @@ train_ok = run_mode("critic_train")
 if train_ok and os.path.exists(CRITIC_CKPT):
     print(f"\n[INFO] critic.pth found ({os.path.getsize(CRITIC_CKPT)//1024} KB) — running eval")
     run_mode("critic_eval")
+    run_mode("critic_eval", ["--skip-rate", "0.25"])
 else:
     print("[ERROR] Skipping critic_eval — training failed or critic.pth not found")
 
-# ── Stage 4: Zero-shot eval ─────────────────────────────────────────────
+# ── Stage 4: Zero-shot — base model (reference) ─────────────────────────
 run_mode("zero_shot")
+
+# ── Stage 5: Zero-shot — SoftLayer-patched model ────────────────────────
+if train_ok and os.path.exists(CRITIC_CKPT):
+    run_mode("zero_shot_skip", ["--skip-rate", "0.5"])
+    run_mode("zero_shot_skip", ["--skip-rate", "0.25"])
+else:
+    print("[ERROR] Skipping zero_shot_skip — critic.pth not available")
+
+# ── Stage 6: Representation analysis (CKA) ──────────────────────────────
+if train_ok and os.path.exists(CRITIC_CKPT):
+    run_mode("cka")
+else:
+    print("[ERROR] Skipping cka — critic.pth not available")
+
+# ── Stage 7: Efficiency metrics ─────────────────────────────────────────
+run_mode("flops")
+run_mode("latency")
+
+# ── Stage 8: Build results table from W&B ───────────────────────────────
+print(f"\n{'='*60}\nBuilding results table from W&B\n{'='*60}")
+ret = subprocess.run([sys.executable, "results_table.py"], cwd=REPO_DIR)
+if ret.returncode != 0:
+    print("[WARN] results_table.py failed — check wandb credentials")
 
 print("\nAll experiments complete. Check wandb for results.")
