@@ -52,8 +52,13 @@ class MoDLayer(nn.Module):
         idx_exp = top_indices_sorted.unsqueeze(-1).expand(-1, -1, dim)
         selected = hidden_states.gather(1, idx_exp)  # [batch, capacity, dim]
 
+        # Subset position_ids so RoPE is computed for selected positions only
+        new_kwargs = dict(kwargs)
+        if new_kwargs.get("position_ids") is not None:
+            new_kwargs["position_ids"] = new_kwargs["position_ids"].gather(1, top_indices_sorted)
+
         # Process only selected tokens
-        out = self.layer(selected, *args, **kwargs)
+        out = self.layer(selected, *args, **new_kwargs)
         out_h = out[0] if isinstance(out, tuple) else out
 
         # Residual: unselected tokens pass through unchanged

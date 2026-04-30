@@ -3,13 +3,13 @@ main.py — Orchestration entry point for SoftLayer experiments.
 
 Usage:
   python main.py --mode full
-  python main.py --mode static_25
-  python main.py --mode random_skip
+  python main.py --mode mod
   python main.py --mode critic_train
   python main.py --mode critic_eval
   python main.py --mode critic_eval --skip-rate 0.4
-  python main.py --mode baselines
   python main.py --mode zero_shot
+  python main.py --mode zero_shot_skip
+  python main.py --mode cka
 """
 
 import argparse
@@ -22,13 +22,9 @@ from utils.model import load_model, device
 from data.dataset import load_dataset_part as load_dataset_masked
 from training.train_critic import train_block_critic
 from evaluation.evaluate import run_full, run_skip, evaluate_goldilocks
-from evaluation.flops import measure_flops_manual
-from evaluation.latency import measure_latency
 from evaluation.manifold import layer_cka_table
 from evaluation.zero_shot import run_zero_shot, print_zero_shot_table
 from evaluation.manifold import layer_cosine_sim_table
-from baselines.static_skip import apply_static_skip
-from baselines.random_skip import apply_random_skip
 from baselines.mod import apply_mod
 from models.critics import LogTemporalCritic
 from models.router import SoftPlanningRouter
@@ -59,15 +55,11 @@ def main():
         "--mode",
         choices=[
             "full",
-            "static_25",
-            "random_skip",
+            "mod",
             "critic_train",
             "critic_eval",
-            "baselines",
             "zero_shot",
             "zero_shot_skip",
-            "flops",
-            "latency",
             "cka",
         ],
         default="full",
@@ -89,26 +81,17 @@ def main():
             wandb.finish()
         log_event("eval_result", result)
 
-    elif args.mode == "static_25":
-        rate = 0.25
-        _init_wandb(f"static_skip_{int(rate*100)}") if not args.no_wandb else None
+    elif args.mode == "mod":
+        _init_wandb("baseline_mod") if not args.no_wandb else None
         model, tokenizer = load_model()
         test_loader = _make_loader(config.get("dataset_split", "test[:1%]"))
-        result = run_skip(model, test_loader, apply_static_skip, {"skip_rate": rate}, device=str(device))
+        r = run_skip(model, test_loader, apply_mod, {"capacity_factor": 0.5}, device=str(device))
+        r["method"] = "mod"
         if not args.no_wandb:
-            wandb.log(result)
+            wandb.log({"ppl": r["ppl"], "throughput": r["throughput"]})
+            wandb.run.summary.update({"ppl": r["ppl"], "throughput": r["throughput"]})
             wandb.finish()
-        log_event("eval_result", result)
-
-    elif args.mode == "random_skip":
-        _init_wandb("random_skip") if not args.no_wandb else None
-        model, tokenizer = load_model()
-        test_loader = _make_loader(config.get("dataset_split", "test[:1%]"))
-        result = run_skip(model, test_loader, apply_random_skip, {"skip_rate": args.skip_rate}, device=str(device))
-        if not args.no_wandb:
-            wandb.log(result)
-            wandb.finish()
-        log_event("eval_result", result)
+        log_event("eval_result", r)
 
     elif args.mode == "critic_train":
         _init_wandb("critic_train") if not args.no_wandb else None
@@ -156,31 +139,7 @@ def main():
             wandb.finish()
         log_event("eval_result", result)
 
-    elif args.mode == "baselines":
-        from baselines.token_pruning import apply_token_pruning
-
-        results = []
-        for name, fn, kwargs in [
-            ("static_25", apply_static_skip, {"skip_rate": 0.25}),
-            ("random_25", apply_random_skip, {"skip_rate": 0.25}),
-            ("token_prune", apply_token_pruning, {"keep_rate": 0.75}),
-            ("mod", apply_mod, {"capacity_factor": 0.5}),
-        ]:
-            _init_wandb(f"baseline_{name}") if not args.no_wandb else None
-            model, tokenizer = load_model()
-            test_loader = _make_loader(config.get("dataset_split", "test[:1%]"))
-            r = run_skip(model, test_loader, fn, kwargs, device=str(device))
-            r["method"] = name
-            results.append(r)
-            if not args.no_wandb:
-                wandb.log({"ppl": r["ppl"], "throughput": r["throughput"]})
-                wandb.run.summary.update({"ppl": r["ppl"], "throughput": r["throughput"]})
-                wandb.finish()
-        for r in results:
-            print(f"{r['method']:20s}  PPL={r['ppl']:.4f}  tput={r['throughput']:.1f}")
-        log_event("baselines_results", {"results": results})
-
-    elif args.mode == "zero_shot":
+    elif args.mode == "cka":
         _init_wandb("zero_shot") if not args.no_wandb else None
         model, tokenizer = load_model()
         result = run_zero_shot(model, tokenizer, device=str(device))
@@ -221,18 +180,6 @@ def main():
             wandb.run.summary.update(flat)
             wandb.finish()
         log_event("zero_shot_skip_result", result)
-
-    elif args.mode == "flops":
-        model, tokenizer = load_model()
-        flops = measure_flops_manual(model, seq_len=config.get("max_length", 128))
-        logger.info(f"Estimated GFLOPs: {flops:.2f}")
-        log_event("flops", {"gflops": flops})
-
-    elif args.mode == "latency":
-        model, tokenizer = load_model()
-        stats = measure_latency(model, seq_len=config.get("max_length", 128), device=str(device))
-        logger.info(f"Latency p50={stats['p50_ms']:.2f}ms  p95={stats['p95_ms']:.2f}ms")
-        log_event("latency", stats)
 
     elif args.mode == "cka":
         import os

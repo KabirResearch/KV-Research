@@ -15,7 +15,7 @@ class SoftPlanningRouter(nn.Module):
             critic = self.critic.module if isinstance(self.critic, nn.DataParallel) else self.critic
             critic_dtype = next(critic.parameters()).dtype
             probs = critic(hidden_states.detach().to(dtype=critic_dtype))  # [batch, seq]
-            thresh = torch.quantile(probs, 1 - self.skip_rate)
+            thresh = torch.quantile(probs, self.skip_rate)
             mask = (probs >= thresh).to(dtype=hidden_states.dtype).unsqueeze(-1)  # [batch, seq, 1]
 
         layer_out = self.layer(hidden_states, *args, **kwargs)

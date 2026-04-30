@@ -4,7 +4,6 @@ from utils.config import config
 import logging
 
 logger = logging.getLogger(__name__)
-model_cache = {}
 
 
 def _resolve_device():
@@ -36,9 +35,6 @@ device = _resolve_device()
 
 def load_model():
     model_name = config["model_name"]
-    if model_name in model_cache:
-        logger.debug(f"Using cached model: {model_name}")
-        return model_cache[model_name]
     logger.info(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model_dtype = torch.float16 if device.type == "cuda" else torch.float32
@@ -69,6 +65,5 @@ def load_model():
             model.gpt_neox = _FakeNeoX(model.layers)
         else:
             raise AttributeError("Model does not have a recognizable layers attribute for patching gpt_neox.layers.")
-    model_cache[model_name] = (model, tokenizer)
     logger.info(f"Model loaded successfully: {model_name}")
     return model, tokenizer
