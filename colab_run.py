@@ -18,16 +18,18 @@ Flow mirrors run.py (Kaggle runner) but uses Colab paths and secret APIs:
 import os
 import sys
 import subprocess
+import torch
+from google.colab import userdata  # type: ignore
 
 # ── 0. Confirm GPU ──────────────────────────────────────────────────────
-import torch
 if not torch.cuda.is_available():
-    raise RuntimeError("No GPU detected. Runtime > Change runtime type > T4 GPU, then re-run.")
+    raise RuntimeError(
+        "No GPU detected. Runtime > Change runtime type > T4 GPU, then re-run."
+    )
+
 print(f"[GPU] {torch.cuda.get_device_name(0)}  |  VRAM {torch.cuda.get_device_properties(0).total_memory // 1024**3} GB")
 
 # ── 1. Colab Secrets ────────────────────────────────────────────────────
-from google.colab import userdata  # type: ignore
-
 for key in ("WANDB_API_KEY", "HF_TOKEN", "GITHUB_TOKEN"):
     try:
         os.environ[key] = userdata.get(key)
@@ -90,6 +92,7 @@ def run_mode(mode, extra_args=None):
     if ret.returncode != 0:
         print(f"[WARN] mode={mode} exited with code {ret.returncode}")
     return ret.returncode == 0
+
 
 def mirror_to_drive(src, label="critic.pth"):
     """Copy a checkpoint to Drive if available."""
