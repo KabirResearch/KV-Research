@@ -23,9 +23,7 @@ from google.colab import userdata  # type: ignore
 
 # ── 0. Confirm GPU ──────────────────────────────────────────────────────
 if not torch.cuda.is_available():
-    raise RuntimeError(
-        "No GPU detected. Runtime > Change runtime type > T4 GPU, then re-run."
-    )
+    raise RuntimeError("No GPU detected. Runtime > Change runtime type > T4 GPU, then re-run.")
 
 vram_gb = torch.cuda.get_device_properties(0).total_memory // 1024**3
 print(f"[GPU] {torch.cuda.get_device_name(0)}  |  VRAM {vram_gb} GB")
@@ -42,6 +40,7 @@ for key in ("WANDB_API_KEY", "HF_TOKEN", "GITHUB_TOKEN"):
 DRIVE_AVAILABLE = False
 try:
     from google.colab import drive  # type: ignore
+
     drive.mount("/content/drive", force_remount=False)
     DRIVE_CHECKPOINT_DIR = "/content/drive/MyDrive/KV-Research/checkpoints"
     os.makedirs(DRIVE_CHECKPOINT_DIR, exist_ok=True)
@@ -58,10 +57,7 @@ REPO_DIR = "/content/repo"
 CRITIC_CKPT = os.path.join(REPO_DIR, "critic.pth")
 
 if os.path.exists(os.path.join(REPO_DIR, ".git")):
-    result = subprocess.run(
-        ["git", "-C", REPO_DIR, "pull", "origin", "master"],
-        capture_output=True, text=True
-    )
+    result = subprocess.run(["git", "-C", REPO_DIR, "pull", "origin", "master"], capture_output=True, text=True)
     print(result.stdout.strip() or "[GIT] Already up to date")
     if result.returncode != 0:
         print(f"[WARN] git pull failed: {result.stderr.strip()}")
@@ -72,8 +68,7 @@ else:
 # ── 4. Install dependencies ─────────────────────────────────────────────
 # Colab ships torch + transformers; install the extras that are missing
 subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q",
-     "fvcore", "lm-eval", "wandb", "accelerate", "datasets"],
+    [sys.executable, "-m", "pip", "install", "-q", "fvcore", "lm-eval", "wandb", "accelerate", "datasets"],
     check=True,
 )
 print("[DEPS] Extra dependencies installed")
@@ -101,6 +96,7 @@ def mirror_to_drive(src, label="critic.pth"):
     """Copy a checkpoint to Drive if available."""
     if DRIVE_AVAILABLE and os.path.exists(src):
         import shutil
+
         dst = os.path.join(DRIVE_CHECKPOINT_DIR, label)
         shutil.copy2(src, dst)
         print(f"[DRIVE] Saved {label} → {dst}")
