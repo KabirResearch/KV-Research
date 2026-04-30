@@ -27,7 +27,8 @@ if not torch.cuda.is_available():
         "No GPU detected. Runtime > Change runtime type > T4 GPU, then re-run."
     )
 
-print(f"[GPU] {torch.cuda.get_device_name(0)}  |  VRAM {torch.cuda.get_device_properties(0).total_memory // 1024**3} GB")
+vram_gb = torch.cuda.get_device_properties(0).total_memory // 1024**3
+print(f"[GPU] {torch.cuda.get_device_name(0)}  |  VRAM {vram_gb} GB")
 
 # ── 1. Colab Secrets ────────────────────────────────────────────────────
 for key in ("WANDB_API_KEY", "HF_TOKEN", "GITHUB_TOKEN"):
@@ -51,10 +52,10 @@ except Exception as e:
 
 # ── 3. Clone / pull repo ────────────────────────────────────────────────
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-REPO_BASE    = "github.com/KabirResearch/KV-Research.git"
-REPO_URL     = f"https://{GITHUB_TOKEN}:x-oauth-basic@{REPO_BASE}" if GITHUB_TOKEN else f"https://{REPO_BASE}"
-REPO_DIR     = "/content/repo"
-CRITIC_CKPT  = os.path.join(REPO_DIR, "critic.pth")
+REPO_BASE = "github.com/KabirResearch/KV-Research.git"
+REPO_URL = f"https://{GITHUB_TOKEN}:x-oauth-basic@{REPO_BASE}" if GITHUB_TOKEN else f"https://{REPO_BASE}"
+REPO_DIR = "/content/repo"
+CRITIC_CKPT = os.path.join(REPO_DIR, "critic.pth")
 
 if os.path.exists(os.path.join(REPO_DIR, ".git")):
     result = subprocess.run(
@@ -82,6 +83,8 @@ sys.path.insert(0, REPO_DIR)
 os.chdir(REPO_DIR)
 
 # ── 6. Runner helper ────────────────────────────────────────────────────
+
+
 def run_mode(mode, extra_args=None):
     cmd = [sys.executable, "main.py", "--mode", mode]
     if extra_args:
@@ -101,6 +104,7 @@ def mirror_to_drive(src, label="critic.pth"):
         dst = os.path.join(DRIVE_CHECKPOINT_DIR, label)
         shutil.copy2(src, dst)
         print(f"[DRIVE] Saved {label} → {dst}")
+
 
 # ── 7. Stage 1: Baselines ───────────────────────────────────────────────
 for mode in ["full", "static_25", "static_50", "random_skip", "baselines"]:
