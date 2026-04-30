@@ -27,10 +27,11 @@ except ImportError:
     _WANDB = False
 from models.critics import LogTemporalCritic
 from logs.research_logger import log_event
+from utils.config import config
 
 logger = logging.getLogger(__name__)
 
-TARGET_LAYERS = [10, 12, 14]  # Adjust for model depth
+_DEFAULT_TARGET_LAYERS = [10, 12, 14]
 
 
 def _ensure_eager_attention(model):
@@ -51,6 +52,7 @@ def train_block_critic(
     epochs: int = 3,
     lr: float = 1e-5,
     device: str = "cuda",
+    target_layers: list = None,
 ) -> LogTemporalCritic:
     """
     Train the LogTemporalCritic using multi-layer attention supervision.
@@ -64,6 +66,7 @@ def train_block_critic(
     Returns:
         trained LogTemporalCritic
     """
+    target_layers = target_layers if target_layers is not None else config.get("target_layers", _DEFAULT_TARGET_LAYERS)
     hidden_size = model.config.hidden_size
     critic = LogTemporalCritic(in_dim=hidden_size).to(device)
 
@@ -87,7 +90,7 @@ def train_block_critic(
     base_model = model.module if isinstance(model, torch.nn.DataParallel) else model
     _ensure_eager_attention(base_model)
 
-    logger.info(f"Training LogTemporalCritic on layers {TARGET_LAYERS} for {epochs} epochs")
+    logger.info(f"Training LogTemporalCritic on layers {target_layers} for {epochs} epochs")
 
     for epoch in range(epochs):
         total_loss = 0.0
@@ -112,14 +115,14 @@ def train_block_critic(
 
             # Attention supervision target: how much each token is attended to
             attn_stack = torch.stack(
-                [outs.attentions[i].mean(dim=1) for i in TARGET_LAYERS]
+                [outs.attentions[i].mean(dim=1) for i in target_layers]
             )  # [num_target, batch, seq, seq]
             avg_attn = attn_stack.mean(dim=0).to(torch.float32)  # [batch, seq, seq]
             target = avg_attn.sum(dim=-1)  # [batch, seq]
             target = target / (target.max() + 1e-6)
 
             # Feature: block-level mean hidden state
-            h_block = torch.stack([outs.hidden_states[i] for i in TARGET_LAYERS]).mean(dim=0)  # [batch, seq, dim]
+            h_block = torch.stack([outs.hidden_states[i] for i in target_layers]).mean(dim=0)  # [batch, seq, dim]
 
             with torch.amp.autocast("cuda", enabled=torch.cuda.is_available()):
                 preds = critic_to_call(h_block)  # [batch, seq, 1]

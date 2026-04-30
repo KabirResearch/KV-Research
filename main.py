@@ -99,7 +99,7 @@ def main():
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
         critic_batch_size = max(config.get("batch_size", 1), num_gpus)
         train_loader = _make_loader(
-            config.get("dataset_split", "test[:1%]"),
+            config.get("val_dataset_split", "validation[:1%]"),
             batch_size=critic_batch_size,
             drop_last=torch.cuda.is_available() and num_gpus > 1,
         )

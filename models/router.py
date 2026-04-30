@@ -16,11 +16,19 @@ class SoftPlanningRouter(nn.Module):
             critic_dtype = next(critic.parameters()).dtype
             probs = critic(hidden_states.detach().to(dtype=critic_dtype))  # [batch, seq]
             thresh = torch.quantile(probs, self.skip_rate)
-            mask = (probs >= thresh).to(dtype=hidden_states.dtype).unsqueeze(-1)  # [batch, seq, 1]
+            # Boolean mask: True = token is important enough to process
+            run_mask = probs >= thresh  # [batch, seq]
+
+        # True skip: if every token is below the threshold, skip the layer entirely
+        if not run_mask.any():
+            return (hidden_states,) + ((None,) * len(kwargs.get("past_key_value", ())) if False else ())
 
         layer_out = self.layer(hidden_states, *args, **kwargs)
         layer_hidden = layer_out[0] if isinstance(layer_out, tuple) else layer_out
-        mixed_hidden = layer_hidden * mask + hidden_states * (1 - mask)
+
+        # Blend: keep layer output for important tokens, residual for skipped tokens
+        float_mask = run_mask.to(dtype=hidden_states.dtype).unsqueeze(-1)  # [batch, seq, 1]
+        mixed_hidden = layer_hidden * float_mask + hidden_states * (1 - float_mask)
 
         if isinstance(layer_out, tuple):
             return (mixed_hidden,) + layer_out[1:]
