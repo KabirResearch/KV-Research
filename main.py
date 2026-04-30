@@ -189,8 +189,7 @@ def main():
         print_zero_shot_table(result)
         if not args.no_wandb:
             flat = {
-                f"zero_shot/{task}": res.get("acc,none", res.get("acc_norm,none", 0))
-                for task, res in result.items()
+                f"zero_shot/{task}": res.get("acc,none", res.get("acc_norm,none", 0)) for task, res in result.items()
             }
             wandb.log(flat)
             wandb.run.summary.update(flat)
