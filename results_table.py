@@ -29,10 +29,9 @@ ENTITY = _cfg.get("wandb_entity") or None  # None → uses default entity
 RUN_NAME_TO_ROW = {
     "full_model": "Full Model",
     "static_skip_25": "Static Skip 25%",
-    "static_skip_50": "Static Skip 50%",
     "random_skip": "Random Skip 25%",
     "baseline_token_prune": "Token Pruning",
-    "baseline_early_exit": "Early Exit",
+    "baseline_mod": "Mixture of Depths (MoD)",
     "critic_eval_skip50": "SoftLayer 50% (ours)",
     "critic_eval_skip25": "SoftLayer 25% (ours)",
 }

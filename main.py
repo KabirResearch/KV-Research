@@ -4,7 +4,6 @@ main.py — Orchestration entry point for SoftLayer experiments.
 Usage:
   python main.py --mode full
   python main.py --mode static_25
-  python main.py --mode static_50
   python main.py --mode random_skip
   python main.py --mode critic_train
   python main.py --mode critic_eval
@@ -30,6 +29,7 @@ from evaluation.zero_shot import run_zero_shot, print_zero_shot_table
 from evaluation.manifold import layer_cosine_sim_table
 from baselines.static_skip import apply_static_skip
 from baselines.random_skip import apply_random_skip
+from baselines.mod import apply_mod
 from models.critics import LogTemporalCritic
 from models.router import SoftPlanningRouter
 from logs.research_logger import log_event
@@ -60,7 +60,6 @@ def main():
         choices=[
             "full",
             "static_25",
-            "static_50",
             "random_skip",
             "critic_train",
             "critic_eval",
@@ -90,8 +89,8 @@ def main():
             wandb.finish()
         log_event("eval_result", result)
 
-    elif args.mode in ("static_25", "static_50"):
-        rate = 0.25 if args.mode == "static_25" else 0.50
+    elif args.mode == "static_25":
+        rate = 0.25
         _init_wandb(f"static_skip_{int(rate*100)}") if not args.no_wandb else None
         model, tokenizer = load_model()
         test_loader = _make_loader(config.get("dataset_split", "test[:1%]"))
@@ -159,15 +158,13 @@ def main():
 
     elif args.mode == "baselines":
         from baselines.token_pruning import apply_token_pruning
-        from baselines.early_exit import apply_early_exit
 
         results = []
         for name, fn, kwargs in [
             ("static_25", apply_static_skip, {"skip_rate": 0.25}),
-            ("static_50", apply_static_skip, {"skip_rate": 0.50}),
             ("random_25", apply_random_skip, {"skip_rate": 0.25}),
             ("token_prune", apply_token_pruning, {"keep_rate": 0.75}),
-            ("early_exit", apply_early_exit, {"confidence_threshold": 0.9, "min_exit_layer": 8}),
+            ("mod", apply_mod, {"capacity_factor": 0.5}),
         ]:
             _init_wandb(f"baseline_{name}") if not args.no_wandb else None
             model, tokenizer = load_model()

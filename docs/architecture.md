@@ -55,7 +55,7 @@ flowchart TD
         BS2["Random Skip"]
         BS3["Token Pruning"]
         BS4["Early Exit"]
-        BS5["MoE / MoD"]
+        BS5["MoD"]
         BS6["Speculative Decoding"]
     end
 

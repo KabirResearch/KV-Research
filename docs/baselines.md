@@ -10,12 +10,9 @@ All baselines are evaluated under the same conditions: same model (Pythia-1B), s
 |---|---|---|---|---|---|---|---|
 | Full Model (baseline) | — | — | — | — | — | — | 1.0 |
 | Static Skip 25% | | | | | | | |
-| Static Skip 50% | | | | | | | |
 | Random Skip (matched rate) | | | | | | | |
 | Dynamic Token Pruning | | | | | | | |
-| Early Exit | | | | | | | |
-| MoE (top-2) | | | | | | | |
-| MoD (Mixture of Depths) | | | | | | | |
+| Mixture of Depths (MoD) | | | | | | | |
 | Speculative Decoding | | | | | | | |
 | **SoftLayer (ours)** | | | | | | | |
 
