@@ -86,4 +86,4 @@ def apply_mod(model, capacity_factor: float = 0.5):
     for i, layer in enumerate(model.gpt_neox.layers):
         mod_layer= MoDLayer(layer, hidden_size, capacity_factor)
         model.gpt_neox.layers[i] = mod_layer.to(device)
-    return model
+    return model 
