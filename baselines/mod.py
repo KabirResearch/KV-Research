@@ -29,6 +29,7 @@ class MoDRouter(nn.Module):
         self.proj = nn.Linear(hidden_size, 1, bias=False)
 
     def forward(self, hidden_states):
+        hidden_states = hidden_states.to(self.proj.weight.device)  # ensure same device for projection
         return self.proj(hidden_states).squeeze(-1)  # [batch, seq]
 
 
@@ -81,6 +82,8 @@ def apply_mod(model, capacity_factor: float = 0.5):
         model with MoD applied in-place
     """
     hidden_size = model.config.hidden_size
+    device = next(model.parameters()).device
     for i, layer in enumerate(model.gpt_neox.layers):
-        model.gpt_neox.layers[i] = MoDLayer(layer, hidden_size, capacity_factor)
+        mod_layer= MoDLayer(layer, hidden_size, capacity_factor)
+        model.gpt_neox.layers[i] = mod_layer.to(device)
     return model
