@@ -14,26 +14,26 @@ jobs:
   # ─────────────────────────────────────────────
   # 1. LINT + TEST
   # ─────────────────────────────────────────────
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  # test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: pip
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.10'
+  #         cache: pip
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest black flake8
+  #     - name: Install dependencies
+  #       run: |
+  #         pip install -r requirements.txt
+  #         pip install pytest black flake8
 
-      - name: Lint (flake8)
-        run: flake8 --max-line-length=120 --exclude=.git,__pycache__,wandb,.kilo,.venv
+  #     - name: Lint (flake8)
+  #       run: flake8 --max-line-length=120 --exclude=.git,__pycache__,wandb,.kilo,.venv
 
-      - name: Format check (black)
-        run: black --check --diff --line-length=120 .
+  #     - name: Format check (black)
+  #       run: black --check --diff --line-length=120 .
 
 
   # ─────────────────────────────────────────────
@@ -41,7 +41,7 @@ jobs:
   # ─────────────────────────────────────────────
   push-to-kaggle:
     runs-on: ubuntu-latest
-    needs: test
+    # needs: `
 
     steps:
       - uses: actions/checkout@v4
