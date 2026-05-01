@@ -33,8 +33,8 @@ def _resolve_device():
 device = _resolve_device()
 
 
-def load_model():
-    model_name = config["model_name"]
+def load_model(model_name: str = None):
+    model_name = model_name or config["model_name"]
     logger.info(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model_dtype = torch.float16 if device.type == "cuda" else torch.float32
