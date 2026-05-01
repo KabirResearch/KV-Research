@@ -30,7 +30,7 @@ jobs:
           pip install pytest black flake8
 
       - name: Lint (flake8)
-        run: flake8 --max-line-length=120 --exclude=.git,__pycache__,wandb,.kilo
+        run: flake8 --max-line-length=120 --exclude=.git,__pycache__,wandb,.kilo,.venv
 
       - name: Format check (black)
         run: black --check --diff --line-length=120 .
