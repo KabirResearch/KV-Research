@@ -82,7 +82,10 @@ def apply_moe(model, num_experts: int = 8, top_k: int = 2):
     hidden_size = model.config.hidden_size
     # GPT-NeoX intermediate size is typically 4x hidden
     intermediate_size = getattr(model.config, "intermediate_size", hidden_size * 4)
+    # Match device and dtype of existing model parameters
+    ref = next(model.parameters())
+    device, dtype = ref.device, ref.dtype
     for layer in model.gpt_neox.layers:
         if hasattr(layer, "mlp"):
-            layer.mlp = MoEFFN(hidden_size, intermediate_size, num_experts, top_k)
+            layer.mlp = MoEFFN(hidden_size, intermediate_size, num_experts, top_k).to(device=device, dtype=dtype)
     return model
