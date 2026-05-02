@@ -82,8 +82,10 @@ def apply_mod(model, capacity_factor: float = 0.5):
         model with MoD applied in-place
     """
     hidden_size = model.config.hidden_size
+    ref_param = next(model.parameters())
+    device, dtype = ref_param.device, ref_param.dtype
     device = next(model.parameters()).device
     for i, layer in enumerate(model.gpt_neox.layers):
         mod_layer= MoDLayer(layer, hidden_size, capacity_factor)
-        model.gpt_neox.layers[i] = mod_layer.to(device)
+        model.gpt_neox.layers[i] = mod_layer.to(device, dtype=dtype)
     return model 
