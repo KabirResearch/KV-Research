@@ -56,7 +56,10 @@ class MoDLayer(nn.Module):
         # Subset position_ids so RoPE is computed for selected positions only
         new_kwargs = dict(kwargs)
         if new_kwargs.get("position_ids") is not None:
-            new_kwargs["position_ids"] = new_kwargs["position_ids"].gather(1, top_indices_sorted)
+            pos_ids = new_kwargs["position_ids"]
+            if pos_ids.shape[0] != batch:
+                pos_ids = pos_ids.expand(batch, -1)
+            new_kwargs["position_ids"] = pos_ids.gather(1, top_indices_sorted)
 
         # Process only selected tokens
         out = self.layer(selected, *args, **new_kwargs)
